@@ -103,7 +103,8 @@
   /* ---------- palco ---------- */
   .palco { position: relative; overflow: hidden; background: var(--ceu); }
   canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
-  canvas.sobre-no { cursor: pointer; }
+  canvas.sobre-no { cursor: grab; }
+  canvas.arrastando { cursor: grabbing; }
   .rotulo-flutuante {
     position: absolute; pointer-events: none; padding: 5px 10px;
     background: var(--ceu-3); color: var(--texto); border: 1px solid var(--borda);
@@ -119,6 +120,9 @@
     background: var(--ceu-2); cursor: pointer; font-size: 18px; line-height: 1;
   }
   .zoom button:hover { border-color: var(--ouro); }
+  #movimento { font-size: 11px; letter-spacing: -1px; }
+  /* com o perfil aberto, os botões ficam à esquerda do painel, sem serem cobertos */
+  .palco:has(.perfil.aberto) .zoom { right: calc(min(390px, 100% - 36px) + 36px); }
 
   /* ---------- perfil ---------- */
   .perfil {
@@ -179,7 +183,9 @@
       top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 70%;
       transform: translateY(calc(100% + 40px));
     }
-    .zoom { display: none; }
+    .zoom #mais, .zoom #menos, .zoom #encaixar { display: none; }
+    .zoom { right: 12px; bottom: 12px; }
+    .palco:has(.perfil.aberto) .zoom { right: 12px; bottom: auto; top: 12px; }
   }
   @media (prefers-reduced-motion: reduce) { .perfil { transition: none; } }
 </style>
@@ -239,6 +245,7 @@
       <button id="mais" aria-label="Aproximar">+</button>
       <button id="menos" aria-label="Afastar">−</button>
       <button id="encaixar" aria-label="Ver o mapa inteiro">⤢</button>
+      <button id="movimento" aria-pressed="true" aria-label="Pausar o movimento das estrelas" title="Pausar o movimento das estrelas">❚❚</button>
     </div>
 
     <section class="perfil" id="perfil" aria-labelledby="perfil-nome" aria-hidden="true" inert>
@@ -288,7 +295,7 @@
   const C = {
     ceu: cor("ceu"), texto: cor("texto"), texto2: cor("texto-2"), texto3: cor("texto-3"),
     azul: cor("azul"), ouro: cor("ouro"), branca: cor("branca"),
-    fio: "rgba(174, 183, 214, 0.3)", fioForte: "rgba(242, 196, 109, 0.75)", grade: "rgba(174, 183, 214, 0.07)",
+    fio: "rgba(174, 183, 214, 0.16)", fioForte: "rgba(242, 196, 109, 0.75)", grade: "rgba(174, 183, 214, 0.07)",
   };
 
   // ---------- utilidades ----------
@@ -362,12 +369,14 @@
     aviso.hidden = true;
     redimensiona();
     posiciona(() => {
-      raioMapa = d3.max(nos, (n) => Math.hypot(n.x, n.y)) || 400;
+      preparaMovimento();
+      raioMapa = d3.max(nos, (n) => Math.hypot(n.bx, n.by)) || 400;
       raioMaximo = d3.max(nos, (n) => n.r) || 10;
       porGrau = [...nos].sort((a, b) => b.grau - a.grau);
       aplicaFiltro();
       encaixa(false);
       abreDoEndereco();
+      iniciaMovimento();
     });
   }
 
@@ -443,14 +452,22 @@
       timerMovimento = setTimeout(() => { emMovimento = false; agenda(); }, 160);
       agenda();
     });
+  zoom.filter((ev) => {
+    if (!((!ev.ctrlKey || ev.type === "wheel") && !ev.button)) return false;
+    if (ev.type === "mousedown" || (ev.type === "touchstart" && ev.touches.length === 1)) {
+      const p = d3.pointers(ev, tela)[0];
+      if (p && noEm(p[0], p[1])) return false;
+    }
+    return true;
+  });
   d3.select(tela).call(zoom).on("dblclick.zoom", null);
 
   function encaixa(animado) {
     if (!nos.length) return;
     const visiveis = correspondentes ? nos.filter((n) => correspondentes.has(n)) : nos;
     if (!visiveis.length) return;
-    const [x0, x1] = d3.extent(visiveis, (n) => n.x);
-    const [y0, y1] = d3.extent(visiveis, (n) => n.y);
+    const [x0, x1] = d3.extent(visiveis, (n) => n.bx ?? n.x);
+    const [y0, y1] = d3.extent(visiveis, (n) => n.by ?? n.y);
     const k = Math.min(8, 0.92 / Math.max((x1 - x0 + 40) / largura, (y1 - y0 + 40) / altura));
     const t = d3.zoomIdentity.translate(largura / 2, altura / 2).scale(k).translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
     const sel = d3.select(tela);
@@ -468,7 +485,7 @@
     const celular = window.innerWidth <= 760;
     const dx = !celular && aberto ? -190 : 0;
     const dy = celular && aberto ? -altura * 0.3 : 0;
-    const t = d3.zoomIdentity.translate(largura / 2 + dx, altura / 2 + dy).scale(k).translate(-n.x, -n.y);
+    const t = d3.zoomIdentity.translate(largura / 2 + dx, altura / 2 + dy).scale(k).translate(-n.bx, -n.by);
     const sel = d3.select(tela);
     if (semMovimento()) sel.call(zoom.transform, t);
     else sel.transition().duration(500).call(zoom.transform, t);
@@ -492,6 +509,7 @@
   // junta vários pedidos de redesenho num único quadro
   let quadroPendente = false;
   function agenda() {
+    if (motorAtivo) { forcarQuadro = true; return; } // o motor já vai desenhar
     if (quadroPendente) return;
     quadroPendente = true;
     requestAnimationFrame(() => { quadroPendente = false; desenha(); });
@@ -639,18 +657,19 @@
   // movimento do mouse; refeita quando os filtros mudam.
   let arvore = null;
   function refazArvore() {
-    arvore = d3.quadtree().x((n) => n.x).y((n) => n.y).addAll(nos.filter(visivel));
+    arvore = d3.quadtree().x((n) => n.bx).y((n) => n.by).addAll(nos.filter(visivel));
   }
   function noEm(px, py) {
     if (!arvore) return null;
     const [x, y] = transformacao.invert([px, py]);
-    const n = arvore.find(x, y, raioMaximo / Math.max(1, Math.sqrt(transformacao.k / 1.6)) + 6 / transformacao.k);
+    const n = arvore.find(x, y, raioMaximo / Math.max(1, Math.sqrt(transformacao.k / 1.6)) + 6 / transformacao.k + 4);
     return n && Math.hypot(n.x - x, n.y - y) - raio(n) <= 6 / transformacao.k ? n : null;
   }
   let raioMaximo = 0;
 
   let ultimoPonteiro = null, ponteiroPendente = false;
   tela.addEventListener("pointermove", (ev) => {
+    if (arrasto) { arrastaPara(ev); return; }
     if (ev.buttons) return;
     ultimoPonteiro = d3.pointer(ev, tela);
     if (ponteiroPendente) return;
@@ -670,6 +689,7 @@
   });
   tela.addEventListener("pointerleave", () => { rotulo.style.display = "none"; });
   tela.addEventListener("click", (ev) => {
+    if (suprimirClique) { suprimirClique = false; return; }
     const [px, py] = d3.pointer(ev, tela);
     const n = noEm(px, py);
     if (n) seleciona(n, false);
@@ -705,6 +725,198 @@
     if (n) seleciona(n);
   }
   window.addEventListener("hashchange", abreDoEndereco);
+
+
+  // ---------- movimento ----------
+  // Três efeitos leves, todos a partir das posições prontas (sem física global):
+  //  1. entrada: as estrelas se expandem do centro ao abrir a página;
+  //  2. deriva: cada estrela descreve uma pequena órbita própria (seno/cosseno);
+  //  3. arrasto: puxar uma estrela leva as vizinhas junto, presas por molas.
+  // A deriva roda a no máximo 30 quadros/s, para quando a aba está oculta
+  // (requestAnimationFrame já faz isso), respeita "reduzir movimento" do
+  // sistema, tem botão de pausa e desliga sozinha se o aparelho estiver lento.
+  const FPS_DERIVA = 30;
+  const CHAVE_PREFERENCIA = "constelacao-ed-movimento";
+  let derivaLigada = !semMovimento();
+  try { if (localStorage.getItem(CHAVE_PREFERENCIA) === "0") derivaLigada = false; } catch {}
+  let economico = false;
+  let entrada = 1, inicioEntrada = 0;
+  const elasticos = new Set();
+  let arrasto = null, suprimirClique = false;
+  let motorAtivo = false, forcarQuadro = false, ultimoQuadro = 0;
+  const custos = [];
+
+  function preparaMovimento() {
+    nos.forEach((n, i) => {
+      n.bx = n.x; n.by = n.y;
+      n.ex = n.ey = n.vex = n.vey = n.tx = n.ty = 0;
+      // ritmo e fase próprios (determinísticos) para cada estrela
+      n.f1 = 0.35 + ((i * 7919) % 100) / 220;
+      n.f2 = 0.3 + ((i * 104729) % 100) / 250;
+      n.p1 = (i * 2.399963) % (2 * Math.PI);
+      n.p2 = (i * 1.618034) % (2 * Math.PI);
+    });
+  }
+
+  function iniciaMovimento() {
+    entrada = semMovimento() ? 1 : 0;
+    inicioEntrada = 0;
+    atualizaBotao();
+    ligaMotor();
+  }
+
+  function atualizaPosicoes(agora) {
+    const t = agora / 1000;
+    const deriva = derivaLigada && !economico;
+    const amp = deriva ? 1.6 / Math.sqrt(Math.max(transformacao.k, 0.3)) : 0;
+    const esc = entrada < 1 ? 0.1 + 0.9 * (1 - Math.pow(1 - entrada, 3)) : 1;
+    for (const n of nos) {
+      let x = n.bx * esc + n.ex, y = n.by * esc + n.ey;
+      if (amp) {
+        x += amp * Math.sin(t * n.f1 + n.p1);
+        y += amp * Math.cos(t * n.f2 + n.p2);
+      }
+      n.x = x; n.y = y;
+    }
+  }
+
+  function passoMolas() {
+    const amortecimento = semMovimento() ? 0.55 : 0.78;
+    for (const n of elasticos) {
+      if (arrasto && arrasto.movido && n === arrasto.n) continue; // segue o ponteiro
+      n.vex = (n.vex + (n.tx - n.ex) * 0.12) * amortecimento;
+      n.vey = (n.vey + (n.ty - n.ey) * 0.12) * amortecimento;
+      n.ex += n.vex; n.ey += n.vey;
+      const parado = Math.abs(n.ex - n.tx) + Math.abs(n.ey - n.ty) + Math.abs(n.vex) + Math.abs(n.vey) < 0.03;
+      if (parado && !arrasto && n.tx === 0 && n.ty === 0) {
+        n.ex = n.ey = n.vex = n.vey = 0;
+        elasticos.delete(n);
+      }
+    }
+  }
+
+  function vizinhosDe(n) {
+    return n.entrada.map((a) => a.source).concat(n.saida.map((a) => a.target));
+  }
+
+  function arrastaPara(ev) {
+    const [px, py] = d3.pointer(ev, tela);
+    if (!arrasto.movido) {
+      if (Math.hypot(px - arrasto.px, py - arrasto.py) < 4) return;
+      arrasto.movido = true;
+      rotulo.style.display = "none";
+      tela.classList.add("arrastando");
+    }
+    const n = arrasto.n;
+    const [gx, gy] = transformacao.invert([px, py]);
+    n.ex = gx - n.bx; n.ey = gy - n.by; n.vex = n.vey = 0;
+    elasticos.add(n);
+    for (const m of vizinhosDe(n)) {
+      m.tx = n.ex * 0.45; m.ty = n.ey * 0.45;
+      elasticos.add(m);
+    }
+    ligaMotor();
+  }
+
+  tela.addEventListener("pointerdown", (ev) => {
+    if (ev.button || !nos.length || nos[0].bx === undefined) return;
+    const [px, py] = d3.pointer(ev, tela);
+    const n = noEm(px, py);
+    if (!n) return;
+    arrasto = { n, px, py, movido: false };
+    tela.setPointerCapture(ev.pointerId);
+  });
+  function soltar() {
+    if (!arrasto) return;
+    if (arrasto.movido) {
+      suprimirClique = true;
+      for (const m of elasticos) { m.tx = 0; m.ty = 0; }
+      tela.classList.remove("arrastando");
+    }
+    arrasto = null;
+    ligaMotor();
+  }
+  tela.addEventListener("pointerup", soltar);
+  tela.addEventListener("pointercancel", soltar);
+
+  function ligaMotor() {
+    if (motorAtivo) return;
+    motorAtivo = true;
+    requestAnimationFrame(motor);
+  }
+
+  function motor(agora) {
+    const animandoRapido = entrada < 1 || elasticos.size > 0;
+    const deriva = derivaLigada && !economico;
+    if (!animandoRapido && !deriva) {
+      // nada se mexe: último quadro com as posições-base e o motor para
+      motorAtivo = false;
+      atualizaPosicoes(agora);
+      desenha();
+      return;
+    }
+    const intervalo = animandoRapido ? 0 : 1000 / FPS_DERIVA - 2;
+    if (forcarQuadro || agora - ultimoQuadro >= intervalo) {
+      forcarQuadro = false;
+      ultimoQuadro = agora;
+      if (entrada < 1) {
+        if (!inicioEntrada) inicioEntrada = agora;
+        entrada = Math.min(1, (agora - inicioEntrada) / 1300);
+      }
+      passoMolas();
+      atualizaPosicoes(agora);
+      desenha();
+      // mede o ritmo real (inclui a pintura dos pixels, não só o JavaScript)
+      if (!animandoRapido && !emMovimento && !document.hidden) {
+        if (ultimaDeriva) mede(agora - ultimaDeriva);
+        ultimaDeriva = agora;
+      } else ultimaDeriva = 0;
+    }
+    requestAnimationFrame(motor);
+  }
+
+  // modo econômico: se o aparelho não consegue manter a deriva fluida (menos
+  // de ~20 quadros/s), ela desliga sozinha; a entrada e o arrasto continuam
+  let ultimaDeriva = 0;
+  let muitoLentos = 0;
+  function mede(intervalo) {
+    // aparelho muito lento: decide logo, sem esperar a amostra completa
+    muitoLentos = intervalo > 150 ? muitoLentos + 1 : 0;
+    if (muitoLentos >= 4 && !economico) {
+      muitoLentos = 0; custos.length = 0; economico = true;
+      atualizaBotao("Movimento pausado para poupar o aparelho. Toque para retomar.");
+      return;
+    }
+    custos.push(intervalo);
+    if (custos.length < 30) return;
+    custos.sort((a, b) => a - b);
+    const mediana = custos[15];
+    custos.length = 0;
+    if (mediana > 50 && !economico) {
+      economico = true;
+      atualizaBotao("Movimento pausado para poupar o aparelho. Toque para retomar.");
+    }
+  }
+
+  function atualizaBotao(dica) {
+    const ativo = derivaLigada && !economico;
+    const b = $("movimento");
+    b.textContent = ativo ? "❚❚" : "▶";
+    b.setAttribute("aria-pressed", String(ativo));
+    const rotuloBotao = ativo ? "Pausar o movimento das estrelas" : "Retomar o movimento das estrelas";
+    b.setAttribute("aria-label", rotuloBotao);
+    b.title = dica || rotuloBotao;
+  }
+  $("movimento").onclick = () => {
+    const ativo = derivaLigada && !economico;
+    derivaLigada = !ativo;
+    economico = false;
+    custos.length = 0;
+    ultimaDeriva = 0;
+    try { localStorage.setItem(CHAVE_PREFERENCIA, derivaLigada ? "1" : "0"); } catch {}
+    atualizaBotao();
+    ligaMotor();
+  };
 
   // ---------- painel de perfil ----------
   function botaoPessoa(n, anos) {
