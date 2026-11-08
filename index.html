@@ -265,7 +265,8 @@
 
   const $ = (id) => document.getElementById(id);
   const tela = $("tela");
-  const ctx = tela.getContext("2d");
+  // canvas opaco: o navegador não precisa misturar a tela com o que está atrás
+  const ctx = tela.getContext("2d", { alpha: false });
   const palco = $("palco");
   const rotulo = $("rotulo");
   const aviso = $("aviso");
@@ -315,7 +316,7 @@
   // ---------- fundo estrelado (fixo na tela, gerado uma vez) ----------
   const fundo = document.createElement("canvas");
   function geraFundo() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = DPR();
     fundo.width = Math.round(largura * dpr);
     fundo.height = Math.round(altura * dpr);
     const f = fundo.getContext("2d");
@@ -360,9 +361,14 @@
     preencheControles(dados);
     aviso.hidden = true;
     redimensiona();
-    simula();
-    aplicaFiltro();
-    abreDoEndereco();
+    posiciona(() => {
+      raioMapa = d3.max(nos, (n) => Math.hypot(n.x, n.y)) || 400;
+      raioMaximo = d3.max(nos, (n) => n.r) || 10;
+      porGrau = [...nos].sort((a, b) => b.grau - a.grau);
+      aplicaFiltro();
+      encaixa(false);
+      abreDoEndereco();
+    });
   }
 
   function preencheControles(dados) {
@@ -383,44 +389,59 @@
     $("totais").textContent = `${numero(nos.length)} estrelas e ${numero(arestas.length)} indicações. Atualizado em ${data}.`;
   }
 
-  // ---------- simulação ----------
-  let simulacao;
-  function simula() {
-    simulacao = d3.forceSimulation(nos)
-      .force("link", d3.forceLink(arestas).distance(28).strength(0.6))
-      .force("carga", d3.forceManyBody().strength(-22).distanceMax(320))
-      .force("x", d3.forceX(0).strength(0.045))
-      .force("y", d3.forceY(0).strength(0.045))
-      .force("colisao", d3.forceCollide((n) => n.r + 1.4).iterations(1))
-      .alphaDecay(0.03)
-      .stop();
-
-    const aoTerminar = () => {
-      raioMapa = d3.max(nos, (n) => Math.hypot(n.x, n.y)) || 400;
-      if (!usuarioMoveu) encaixa(!semMovimento());
-      desenha();
+  // ---------- layout ----------
+  // As posições vêm prontas no rede.json (calculadas pelo script Python).
+  // Se faltarem, a física roda num Web Worker, fora da linha principal, para a
+  // página não congelar.
+  function posiciona(pronto) {
+    if (nos.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y))) return pronto();
+    aviso.hidden = false;
+    aviso.replaceChildren(el("p", { textContent: "Montando o mapa…" }));
+    const d3url = document.querySelector('script[src*="d3"]').src;
+    const codigo = `importScripts(${JSON.stringify(d3url)});
+      onmessage = (e) => {
+        const { nos, arestas } = e.data;
+        const sim = d3.forceSimulation(nos)
+          .force("link", d3.forceLink(arestas).distance(28).strength(0.6))
+          .force("carga", d3.forceManyBody().strength(-22).distanceMax(320).theta(1.2))
+          .force("x", d3.forceX(0).strength(0.045))
+          .force("y", d3.forceY(0).strength(0.045))
+          .force("colisao", d3.forceCollide((n) => n.r + 1.4).iterations(1))
+          .alphaDecay(0.035).stop();
+        const total = Math.ceil(Math.log(sim.alphaMin()) / Math.log(1 - sim.alphaDecay()));
+        for (let i = 0; i < total; i++) sim.tick();
+        postMessage(nos.map((n) => [n.x, n.y]));
+      };`;
+    const trabalhador = new Worker(URL.createObjectURL(new Blob([codigo], { type: "text/javascript" })));
+    trabalhador.onmessage = (e) => {
+      e.data.forEach(([x, y], i) => { nos[i].x = x; nos[i].y = y; });
+      trabalhador.terminate();
+      aviso.hidden = true;
+      pronto();
     };
-    if (semMovimento()) {
-      for (let i = 0; i < 260; i++) simulacao.tick();
-      aoTerminar();
-    } else {
-      for (let i = 0; i < 60; i++) simulacao.tick();
-      raioMapa = d3.max(nos, (n) => Math.hypot(n.x, n.y)) || 400;
-      encaixa(false);
-      simulacao.on("tick", () => { if (!usuarioMoveu) encaixa(false); desenha(); })
-        .on("end", aoTerminar)
-        .restart();
-    }
+    trabalhador.postMessage({
+      nos: nos.map((n) => ({ r: n.r })),
+      arestas: (() => {
+        const indice = new Map(nos.map((n, i) => [n, i]));
+        return arestas.map((a) => ({ source: indice.get(a.source), target: indice.get(a.target) }));
+      })(),
+    });
   }
 
   // ---------- zoom ----------
+  // Enquanto o mapa se move, desenha uma versão leve (sem halos nem nomes);
+  // a versão completa volta assim que o movimento para.
+  let emMovimento = false, timerMovimento = 0;
   const zoom = d3.zoom()
     .scaleExtent([0.08, 12])
     .clickDistance(4)
     .on("zoom", (ev) => {
       transformacao = ev.transform;
       if (ev.sourceEvent) usuarioMoveu = true;
-      desenha();
+      emMovimento = true;
+      clearTimeout(timerMovimento);
+      timerMovimento = setTimeout(() => { emMovimento = false; agenda(); }, 160);
+      agenda();
     });
   d3.select(tela).call(zoom).on("dblclick.zoom", null);
 
@@ -454,24 +475,35 @@
   }
 
   // ---------- desenho ----------
+  // Telas de alta densidade (celulares) chegam a 3x; acima de 2x o ganho
+  // visual é mínimo e o custo de pintar cresce com o quadrado.
+  const DPR = () => Math.min(window.devicePixelRatio || 1, 2);
+
   function redimensiona() {
     const r = palco.getBoundingClientRect();
     largura = r.width; altura = r.height;
-    const dpr = window.devicePixelRatio || 1;
-    tela.width = Math.round(largura * dpr);
-    tela.height = Math.round(altura * dpr);
+    tela.width = Math.round(largura * DPR());
+    tela.height = Math.round(altura * DPR());
     geraFundo();
-    desenha();
+    agenda();
   }
   window.addEventListener("resize", redimensiona);
 
-  // de perto, o tamanho na tela cresce só com a raiz do zoom
+  // junta vários pedidos de redesenho num único quadro
+  let quadroPendente = false;
+  function agenda() {
+    if (quadroPendente) return;
+    quadroPendente = true;
+    requestAnimationFrame(() => { quadroPendente = false; desenha(); });
+  }
+
   const raio = (n) => n.r / Math.max(1, Math.sqrt(transformacao.k / 1.6));
-  const corDe = (n) => (n.papel === "ambos" ? C.branca : n.papel === "indicador" ? C.azul : C.ouro);
   const visivel = (n) => !correspondentes || correspondentes.has(n);
+  const CORES = { indicador: C.azul, indicado: C.ouro, ambos: C.branca };
+  const MAX_NOMES = 160;
+  let porGrau = []; // nós em ordem de importância, para escolher quais nomes mostrar
 
   function desenhaGrade(k) {
-    // círculos e raios de uma carta celeste, centrados no mapa
     ctx.strokeStyle = C.grade;
     ctx.lineWidth = 1 / k;
     const passo = raioMapa / 4;
@@ -489,10 +521,11 @@
   }
 
   function desenha() {
-    if (!largura) return;
-    const dpr = window.devicePixelRatio || 1;
+    if (!largura || !nos.length) return;
+    const dpr = DPR();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, tela.width, tela.height);
+    ctx.fillStyle = C.ceu;
+    ctx.fillRect(0, 0, tela.width, tela.height);
     ctx.drawImage(fundo, 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.save();
@@ -500,61 +533,71 @@
     ctx.scale(transformacao.k, transformacao.k);
     const k = transformacao.k;
     const foco = selecionado ? vizinhosSel : null;
+    const leve = emMovimento;
+
+    // área visível (com folga), para pular o que está fora da tela
+    const folga = 30 / k;
+    const [vx0, vy0] = transformacao.invert([0, 0]).map((v) => v - folga);
+    const [vx1, vy1] = transformacao.invert([largura, altura]).map((v) => v + folga);
+    const naTela = (n) => n.x >= vx0 && n.x <= vx1 && n.y >= vy0 && n.y <= vy1;
 
     desenhaGrade(k);
 
-    // linhas entre estrelas
+    // linhas: um único traço para todas
     ctx.lineWidth = 0.8 / k;
     ctx.strokeStyle = C.fio;
     ctx.beginPath();
     for (const a of arestas) {
-      if (!visivel(a.source) || !visivel(a.target)) continue;
-      if (foco && (a.source === selecionado || a.target === selecionado)) continue;
-      ctx.moveTo(a.source.x, a.source.y);
-      ctx.lineTo(a.target.x, a.target.y);
+      const s = a.source, t = a.target;
+      if ((s.x < vx0 && t.x < vx0) || (s.x > vx1 && t.x > vx1) || (s.y < vy0 && t.y < vy0) || (s.y > vy1 && t.y > vy1)) continue;
+      if (!visivel(s) || !visivel(t)) continue;
+      if (foco && (s === selecionado || t === selecionado)) continue;
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(t.x, t.y);
     }
     ctx.stroke();
     if (selecionado) {
-      // a "constelação" da pessoa selecionada
       ctx.lineWidth = 1.4 / k;
       ctx.strokeStyle = C.fioForte;
       ctx.beginPath();
-      for (const a of [...selecionado.entrada, ...selecionado.saida]) {
+      for (const a of selecionado.entrada.concat(selecionado.saida)) {
         ctx.moveTo(a.source.x, a.source.y);
         ctx.lineTo(a.target.x, a.target.y);
       }
       ctx.stroke();
     }
 
-    // estrelas: núcleo + halo suave nas maiores
+    // estrelas: um caminho por cor e estado, em vez de um desenho por estrela
+    const grupos = {};
+    for (const papel in CORES) grupos[papel] = { aceso: new Path2D(), apagado: new Path2D(), halo: new Path2D(), orbita: new Path2D() };
     for (const n of nos) {
+      if (!naTela(n)) continue;
+      const g = grupos[n.papel];
       const apagado = !visivel(n) || (foco && !foco.has(n));
-      const c = corDe(n);
       const r = raio(n);
-      if (!apagado && n.r > 4) {
-        ctx.globalAlpha = 0.12;
-        ctx.fillStyle = c;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, r * 2.1, 0, 2 * Math.PI);
-        ctx.fill();
+      const nucleo = n.papel === "ambos" ? r * 0.75 : r;
+      const alvo = apagado ? g.apagado : g.aceso;
+      alvo.moveTo(n.x + nucleo, n.y);
+      alvo.arc(n.x, n.y, nucleo, 0, 2 * Math.PI);
+      if (n.papel === "ambos" && !apagado) {
+        g.orbita.moveTo(n.x + r * 1.35, n.y);
+        g.orbita.arc(n.x, n.y, r * 1.35, 0, 2 * Math.PI);
       }
-      ctx.globalAlpha = apagado ? 0.14 : 1;
-      ctx.fillStyle = c;
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, n.papel === "ambos" ? r * 0.75 : r, 0, 2 * Math.PI);
-      ctx.fill();
-      if (n.papel === "ambos") {
-        ctx.strokeStyle = c;
-        ctx.lineWidth = Math.max(0.6 / k, r * 0.16);
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, r * 1.35, 0, 2 * Math.PI);
-        ctx.stroke();
+      if (!leve && !apagado && n.r > 4) {
+        g.halo.moveTo(n.x + r * 2.1, n.y);
+        g.halo.arc(n.x, n.y, r * 2.1, 0, 2 * Math.PI);
       }
     }
-    ctx.globalAlpha = 1;
+    for (const papel in grupos) {
+      const g = grupos[papel];
+      ctx.fillStyle = ctx.strokeStyle = CORES[papel];
+      ctx.globalAlpha = 0.12; ctx.fill(g.halo);
+      ctx.globalAlpha = 0.14; ctx.fill(g.apagado);
+      ctx.globalAlpha = 1; ctx.fill(g.aceso);
+      if (papel === "ambos") { ctx.lineWidth = Math.max(0.8 / k, 1 / Math.sqrt(k)); ctx.stroke(g.orbita); }
+    }
 
     if (selecionado) {
-      // órbita tracejada em volta da selecionada
       ctx.setLineDash([4 / k, 3 / k]);
       ctx.lineWidth = 1.5 / k;
       ctx.strokeStyle = C.ouro;
@@ -564,57 +607,72 @@
       ctx.setLineDash([]);
     }
 
-    // nomes, em itálico como nos atlas
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.font = `italic 400 ${12 / k}px "Atkinson Hyperlegible", system-ui, sans-serif`;
-    ctx.lineJoin = "round";
-    ctx.lineWidth = 3.5 / k;
-    ctx.strokeStyle = C.ceu;
-    const [vx0, vy0] = transformacao.invert([0, 0]);
-    const [vx1, vy1] = transformacao.invert([largura, altura]);
-    for (const n of nos) {
-      let destaque;
-      if (foco) destaque = n === selecionado || (foco.has(n) && k >= 1.2);
-      else if (k > 2.6) destaque = visivel(n);
-      else destaque = visivel(n) && ((k > 1.1 && n.grau >= 10) || (k > 1.7 && n.grau >= 4));
-      if (!destaque || n.x < vx0 || n.x > vx1 || n.y < vy0 || n.y > vy1) continue;
-      const y = n.y + raio(n) * (n.papel === "ambos" ? 1.35 : 1) + 3 / k;
-      ctx.fillStyle = n === selecionado ? C.ouro : C.texto;
-      ctx.strokeText(n.nome, n.x, y);
-      ctx.fillText(n.nome, n.x, y);
+    // nomes (só com o mapa parado, e no máximo MAX_NOMES por quadro)
+    if (!leve) {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.font = `italic 400 ${12 / k}px "Atkinson Hyperlegible", system-ui, sans-serif`;
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 3.5 / k;
+      ctx.strokeStyle = C.ceu;
+      const lista = foco ? [selecionado, ...[...foco].filter((n) => n !== selecionado)] : porGrau;
+      let desenhados = 0;
+      for (const n of lista) {
+        if (desenhados >= MAX_NOMES) break;
+        let mostra;
+        if (foco) mostra = n === selecionado || k >= 1.2;
+        else if (k > 2.6) mostra = visivel(n);
+        else mostra = visivel(n) && ((k > 1.1 && n.grau >= 10) || (k > 1.7 && n.grau >= 4));
+        if (!mostra || !naTela(n)) continue;
+        const y = n.y + raio(n) * (n.papel === "ambos" ? 1.35 : 1) + 3 / k;
+        ctx.fillStyle = n === selecionado ? C.ouro : C.texto;
+        ctx.strokeText(n.nome, n.x, y);
+        ctx.fillText(n.nome, n.x, y);
+        desenhados++;
+      }
     }
     ctx.restore();
   }
 
   // ---------- interação ----------
-  function noEm(ev) {
-    const [px, py] = d3.pointer(ev, tela);
-    const [x, y] = transformacao.invert([px, py]);
-    let melhor = null, dist = Infinity;
-    for (const n of nos) {
-      if (!visivel(n)) continue;
-      const d = Math.hypot(n.x - x, n.y - y) - raio(n);
-      if (d < dist) { dist = d; melhor = n; }
-    }
-    return dist <= 6 / transformacao.k ? { n: melhor, px, py } : null;
+  // Busca espacial (quadtree) em vez de percorrer as 2.600 estrelas a cada
+  // movimento do mouse; refeita quando os filtros mudam.
+  let arvore = null;
+  function refazArvore() {
+    arvore = d3.quadtree().x((n) => n.x).y((n) => n.y).addAll(nos.filter(visivel));
   }
+  function noEm(px, py) {
+    if (!arvore) return null;
+    const [x, y] = transformacao.invert([px, py]);
+    const n = arvore.find(x, y, raioMaximo / Math.max(1, Math.sqrt(transformacao.k / 1.6)) + 6 / transformacao.k);
+    return n && Math.hypot(n.x - x, n.y - y) - raio(n) <= 6 / transformacao.k ? n : null;
+  }
+  let raioMaximo = 0;
 
+  let ultimoPonteiro = null, ponteiroPendente = false;
   tela.addEventListener("pointermove", (ev) => {
     if (ev.buttons) return;
-    const achado = noEm(ev);
-    tela.classList.toggle("sobre-no", !!achado);
-    if (achado) {
-      rotulo.textContent = achado.n.nome;
-      rotulo.style.left = achado.px + "px";
-      rotulo.style.top = achado.py + "px";
-      rotulo.style.display = "block";
-    } else rotulo.style.display = "none";
+    ultimoPonteiro = d3.pointer(ev, tela);
+    if (ponteiroPendente) return;
+    ponteiroPendente = true;
+    requestAnimationFrame(() => {
+      ponteiroPendente = false;
+      const [px, py] = ultimoPonteiro;
+      const n = noEm(px, py);
+      tela.classList.toggle("sobre-no", !!n);
+      if (n) {
+        rotulo.textContent = n.nome;
+        rotulo.style.left = px + "px";
+        rotulo.style.top = py + "px";
+        rotulo.style.display = "block";
+      } else rotulo.style.display = "none";
+    });
   });
   tela.addEventListener("pointerleave", () => { rotulo.style.display = "none"; });
   tela.addEventListener("click", (ev) => {
-    const achado = noEm(ev);
-    if (achado) seleciona(achado.n, false);
+    const [px, py] = d3.pointer(ev, tela);
+    const n = noEm(px, py);
+    if (n) seleciona(n, false);
     else fechaPerfil();
   });
 
@@ -626,7 +684,7 @@
     mostraPerfil(n);
     if (location.hash !== "#" + n.id) history.replaceState(null, "", "#" + n.id);
     if (centralizar) centraliza(n);
-    desenha();
+    agenda();
   }
 
   function fechaPerfil() {
@@ -636,7 +694,7 @@
     perfil.setAttribute("aria-hidden", "true");
     perfil.inert = true;
     if (location.hash) history.replaceState(null, "", location.pathname + location.search);
-    desenha();
+    agenda();
   }
   $("fechar").onclick = fechaPerfil;
   document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && selecionado) fechaPerfil(); });
@@ -778,7 +836,8 @@
     }
     const total = correspondentes ? correspondentes.size : nos.length;
     $("contagem").textContent = ativo ? `${numero(total)} de ${numero(nos.length)} estrelas` : "";
-    desenha();
+    refazArvore();
+    agenda();
   }
 
   $("alternar-filtros").onclick = (ev) => {
