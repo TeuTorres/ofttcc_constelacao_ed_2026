@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Constelação ED — Rede de indicações do Design UEMG</title>
+<meta name="description" content="Um mapa das referências indicadas por estudantes de Design da UEMG: profissionais, estúdios e artistas, ligados por quem os indicou.">
+<meta name="theme-color" content="#0b1433">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1433'/%3E%3Cpath d='M16 5l2.4 8.6L27 16l-8.6 2.4L16 27l-2.4-8.6L5 16l8.6-2.4z' fill='%23f2c46d'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  /*
+    Identidade: uma carta celeste. O céu é azul-noite (não preto), o texto é a
+    tinta clara dos atlas antigos, e cada papel na rede é uma "cor de estrela":
+      azul    = estrela quente  -> estudantes que indicaram
+      dourado = estrela amarela -> quem foi indicado(a)
+      branco  = a mais brilhante, com órbita -> foi indicado(a) e também indicou
+    Contrastes (WCAG): texto 14,8:1; texto secundário 9,1:1; texto de apoio
+    6,3:1; bordas de campos 4,2:1; estrelas entre 8,4:1 e 16,2:1 sobre o céu.
+  */
+  :root {
+    color-scheme: dark;
+    --ceu: #0b1433;
+    --ceu-2: #111d45;
+    --ceu-3: #1a2858;
+    --texto: #efe8d6;
+    --texto-2: #aeb7d6;
+    --texto-3: #8d97bd;
+    --borda: #6b78a6;
+    --borda-suave: #2a376a;
+    --azul: #7fb2ff;
+    --ouro: #f2c46d;
+    --branca: #f4f1ff;
+    --fonte-titulo: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+    --fonte: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--ceu);
+    color: var(--texto);
+    font-family: var(--fonte);
+    font-size: 15px;
+    line-height: 1.5;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--ouro); outline-offset: 2px; }
+  a { color: var(--texto); text-decoration-color: var(--texto-3); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--ouro); }
+
+  .app { display: grid; grid-template-columns: 330px 1fr; height: 100%; }
+
+  /* ---------- barra lateral ---------- */
+  .lateral {
+    display: flex; flex-direction: column; gap: 24px;
+    padding: 30px 26px 24px;
+    border-right: 1px solid var(--borda-suave);
+    overflow-y: auto;
+    background: var(--ceu);
+  }
+  .marca h1 {
+    font-family: var(--fonte-titulo);
+    font-weight: 400;
+    font-size: 50px;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .marca h1 em { font-style: italic; color: var(--ouro); }
+  .marca p { margin: 14px 0 0; color: var(--texto-2); max-width: 32ch; }
+
+  .campo { display: flex; flex-direction: column; gap: 6px; }
+  .campo label { font-size: 13px; font-weight: 700; color: var(--texto); }
+  .campo input, .campo select {
+    width: 100%;
+    padding: 9px 12px;
+    background: var(--ceu-2);
+    border: 1px solid var(--borda);
+    border-radius: 6px;
+  }
+  .campo input::placeholder { color: var(--texto-3); opacity: 1; }
+  .campo input:focus, .campo select:focus { border-color: var(--ouro); outline: none; box-shadow: 0 0 0 1px var(--ouro); }
+  .filtros { display: grid; gap: 14px; }
+  .acoes { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .botao-texto {
+    background: none; border: 0; padding: 4px 0; cursor: pointer; font-size: 14px;
+    color: var(--texto); text-decoration: underline; text-decoration-color: var(--texto-3); text-underline-offset: 3px;
+  }
+  .botao-texto:hover { text-decoration-color: var(--ouro); }
+  .contagem { font-size: 14px; color: var(--texto-2); }
+
+  .legenda { list-style: none; margin: 0; padding: 16px 0 0; display: grid; gap: 10px; font-size: 14px; border-top: 1px solid var(--borda-suave); }
+  .legenda li { display: flex; gap: 12px; align-items: center; }
+  .legenda svg { flex: none; }
+  .rodape { margin: auto 0 0; font-size: 13px; color: var(--texto-3); display: grid; gap: 6px; }
+  .rodape p { margin: 0; }
+
+  /* ---------- palco ---------- */
+  .palco { position: relative; overflow: hidden; background: var(--ceu); }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  canvas.sobre-no { cursor: pointer; }
+  .rotulo-flutuante {
+    position: absolute; pointer-events: none; padding: 5px 10px;
+    background: var(--ceu-3); color: var(--texto); border: 1px solid var(--borda);
+    border-radius: 6px; font-size: 14px; white-space: nowrap; transform: translate(-50%, -150%);
+    display: none;
+  }
+  .aviso { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--texto-2); }
+  .aviso[hidden] { display: none; }
+  .aviso p { max-width: 44ch; margin: 0; }
+  .zoom { position: absolute; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .zoom button {
+    width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--borda);
+    background: var(--ceu-2); cursor: pointer; font-size: 18px; line-height: 1;
+  }
+  .zoom button:hover { border-color: var(--ouro); }
+
+  /* ---------- perfil ---------- */
+  .perfil {
+    position: absolute; top: 18px; right: 18px; bottom: 18px; width: min(390px, calc(100% - 36px));
+    background: var(--ceu-2); border: 1px solid var(--borda); border-radius: 10px;
+    display: flex; flex-direction: column; overflow: hidden;
+    transform: translateX(calc(100% + 40px)); transition: transform 0.25s ease;
+  }
+  .perfil.aberto { transform: none; }
+  .perfil::before { content: ""; height: 3px; flex: none; background: var(--ouro); }
+  .perfil[data-papel="indicador"]::before { background: var(--azul); }
+  .perfil[data-papel="ambos"]::before { background: var(--branca); }
+  .perfil-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 20px 22px 0; }
+  .perfil h2 {
+    font-family: var(--fonte-titulo); font-weight: 400; font-size: 34px; line-height: 1.02;
+    margin: 0; overflow-wrap: anywhere;
+  }
+  .fechar {
+    flex: none; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--borda);
+    background: none; cursor: pointer; font-size: 18px; line-height: 1;
+  }
+  .fechar:hover { border-color: var(--ouro); }
+  .perfil-corpo { padding: 10px 22px 26px; overflow-y: auto; }
+  .papel { margin: 0 0 12px; font-size: 14px; color: var(--texto-2); display: flex; gap: 8px; align-items: center; }
+  .ocupacao { margin: 0 0 16px; font-size: 17px; }
+  .dados { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0 0 18px; font-size: 14px; }
+  .dados dt { color: var(--texto-2); }
+  .dados dd { margin: 0; overflow-wrap: anywhere; }
+  .fichas { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ficha {
+    border: 1px solid var(--borda); background: none; border-radius: 999px;
+    padding: 2px 11px; font-size: 13px; cursor: pointer;
+  }
+  .ficha:hover { border-color: var(--ouro); }
+  .perfil h3 {
+    font-family: var(--fonte-titulo); font-style: italic; font-weight: 400; font-size: 22px;
+    margin: 22px 0 6px; padding-top: 14px; border-top: 1px solid var(--borda-suave);
+  }
+  .lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+  .lista button {
+    width: 100%; text-align: left; display: flex; justify-content: space-between; gap: 12px;
+    background: none; border: 0; border-radius: 6px; padding: 6px 8px; margin: 0 -8px; cursor: pointer;
+  }
+  .lista button:hover { background: var(--ceu-3); }
+  .lista .anos { color: var(--texto-2); font-size: 13px; flex: none; }
+  .nota { color: var(--texto-2); font-size: 14px; margin: 0; }
+
+  .so-celular { display: none; }
+
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .lateral { gap: 14px; padding: 16px; border-right: 0; border-bottom: 1px solid var(--borda-suave); max-height: 60vh; }
+    .marca h1 { font-size: 38px; }
+    .marca p, .rodape { display: none; }
+    .so-celular { display: inline; }
+    .lateral:not(.mostrar-filtros) .filtros, .lateral:not(.mostrar-filtros) .legenda { display: none; }
+    .perfil {
+      top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 70%;
+      transform: translateY(calc(100% + 40px));
+    }
+    .zoom { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .perfil { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="lateral" id="lateral">
+    <header class="marca">
+      <h1>Constelação <em>ED</em></h1>
+      <p>As referências indicadas por estudantes de Design da UEMG. Cada estrela é uma pessoa ou estúdio; as linhas mostram quem indicou quem.</p>
+    </header>
+
+    <div class="campo">
+      <label for="busca">Buscar pessoa ou estúdio</label>
+      <input id="busca" type="search" list="nomes" autocomplete="off" placeholder="Ex.: 62 pontos">
+      <datalist id="nomes"></datalist>
+    </div>
+
+    <div class="acoes">
+      <button class="botao-texto so-celular" id="alternar-filtros" aria-expanded="false" aria-controls="filtros">Mostrar filtros</button>
+      <span class="contagem" id="contagem" aria-live="polite"></span>
+    </div>
+
+    <div class="filtros" id="filtros">
+      <div class="campo">
+        <label for="f-area">Área</label>
+        <select id="f-area"><option value="">Todas as áreas</option></select>
+      </div>
+      <div class="campo">
+        <label for="f-local">Localização</label>
+        <select id="f-local"><option value="">Todos os lugares</option></select>
+      </div>
+      <div class="campo">
+        <label for="f-ano">Ano da indicação</label>
+        <select id="f-ano"><option value="">Todos os anos</option></select>
+      </div>
+      <div class="acoes"><button class="botao-texto" id="limpar">Limpar filtros</button></div>
+    </div>
+
+    <ul class="legenda" aria-label="Legenda">
+      <li><svg width="18" height="18" aria-hidden="true"><circle cx="9" cy="9" r="5" fill="#7fb2ff"/></svg>Estudante que indicou</li>
+      <li><svg width="18" height="18" aria-hidden="true"><circle cx="9" cy="9" r="5" fill="#f2c46d"/></svg>Referência indicada</li>
+      <li><svg width="18" height="18" aria-hidden="true"><circle cx="9" cy="9" r="4" fill="#f4f1ff"/><circle cx="9" cy="9" r="7.5" fill="none" stroke="#f4f1ff" stroke-width="1"/></svg>Foi indicado(a) e também indicou</li>
+    </ul>
+
+    <div class="rodape">
+      <p>Clique numa estrela para ver o perfil. Role para aproximar e arraste para mover.</p>
+      <p id="totais"></p>
+    </div>
+  </aside>
+
+  <main class="palco" id="palco">
+    <canvas id="tela" aria-label="Mapa da rede de indicações. Use a busca para encontrar uma pessoa."></canvas>
+    <div class="rotulo-flutuante" id="rotulo"></div>
+    <div class="aviso" id="aviso"><p>Carregando o mapa…</p></div>
+    <div class="zoom">
+      <button id="mais" aria-label="Aproximar">+</button>
+      <button id="menos" aria-label="Afastar">−</button>
+      <button id="encaixar" aria-label="Ver o mapa inteiro">⤢</button>
+    </div>
+
+    <section class="perfil" id="perfil" aria-labelledby="perfil-nome" aria-hidden="true" inert>
+      <div class="perfil-topo">
+        <h2 id="perfil-nome"></h2>
+        <button class="fechar" id="fechar" aria-label="Fechar perfil">×</button>
+      </div>
+      <div class="perfil-corpo" id="perfil-corpo"></div>
+    </section>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  const ARQUIVO_DADOS = "rede.json";
+  const PAPEIS = {
+    indicador: "Estudante que indicou",
+    indicado: "Referência indicada",
+    ambos: "Foi indicado(a) e também indicou",
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const tela = $("tela");
+  const ctx = tela.getContext("2d");
+  const palco = $("palco");
+  const rotulo = $("rotulo");
+  const aviso = $("aviso");
+  const perfil = $("perfil");
+  const semMovimento = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let nos = [], arestas = [], porId = new Map();
+  let transformacao = d3.zoomIdentity;
+  let selecionado = null;
+  let vizinhosSel = new Set();
+  let usuarioMoveu = false;
+  let largura = 0, altura = 0;
+  let raioMapa = 400;
+  const filtro = { area: "", local: "", ano: "" };
+  let correspondentes = null;
+
+  const css = getComputedStyle(document.documentElement);
+  const cor = (n) => css.getPropertyValue("--" + n).trim();
+  const C = {
+    ceu: cor("ceu"), texto: cor("texto"), texto2: cor("texto-2"), texto3: cor("texto-3"),
+    azul: cor("azul"), ouro: cor("ouro"), branca: cor("branca"),
+    fio: "rgba(174, 183, 214, 0.16)", fioForte: "rgba(242, 196, 109, 0.75)", grade: "rgba(174, 183, 214, 0.07)",
+  };
+
+  // ---------- utilidades ----------
+  const numero = (n) => n.toLocaleString("pt-BR");
+  const textoAnos = (anos) => (anos && anos.length ? anos.join(", ") : "");
+  function extraiLinks(texto) {
+    if (!texto) return [];
+    const achados = texto.match(/(https?:\/\/[^\s,;|]+)|((?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s,;|]*)/gi) || [];
+    return [...new Set(achados.map((u) => (/^https?:\/\//i.test(u) ? u : "https://" + u)))]
+      .filter((u) => { try { return ["http:", "https:"].includes(new URL(u).protocol); } catch { return false; } });
+  }
+  function rotuloLink(url) {
+    try {
+      const u = new URL(url);
+      return (u.hostname.replace(/^www\./, "") + u.pathname.replace(/\/+$/, "")).slice(0, 48);
+    } catch { return url; }
+  }
+  function el(tag, props = {}, ...filhos) {
+    const e = document.createElement(tag);
+    Object.assign(e, props);
+    for (const f of filhos) if (f != null) e.append(f);
+    return e;
+  }
+
+  // ---------- fundo estrelado (fixo na tela, gerado uma vez) ----------
+  const fundo = document.createElement("canvas");
+  function geraFundo() {
+    const dpr = window.devicePixelRatio || 1;
+    fundo.width = Math.round(largura * dpr);
+    fundo.height = Math.round(altura * dpr);
+    const f = fundo.getContext("2d");
+    f.setTransform(dpr, 0, 0, dpr, 0, 0);
+    let semente = 7;
+    const aleatorio = () => ((semente = (semente * 16807) % 2147483647) / 2147483647);
+    const quantidade = Math.round((largura * altura) / 2600);
+    for (let i = 0; i < quantidade; i++) {
+      const x = aleatorio() * largura, y = aleatorio() * altura;
+      f.globalAlpha = 0.12 + aleatorio() * 0.28;
+      f.fillStyle = aleatorio() > 0.85 ? C.ouro : C.texto2;
+      f.beginPath();
+      f.arc(x, y, aleatorio() * 0.8 + 0.3, 0, 2 * Math.PI);
+      f.fill();
+    }
+  }
+
+  // ---------- carga ----------
+  fetch(ARQUIVO_DADOS, { cache: "no-cache" })
+    .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(iniciar)
+    .catch(() => {
+      aviso.replaceChildren(el("p", {
+        textContent: location.protocol === "file:"
+          ? "O navegador bloqueia a leitura do rede.json quando a página é aberta direto do computador. Publique no GitHub Pages ou rode um servidor local (python3 -m http.server) na pasta do site."
+          : "Não foi possível carregar o arquivo rede.json. Confira se ele está na mesma pasta que o index.html.",
+      }));
+    });
+
+  function iniciar(dados) {
+    nos = dados.pessoas.map((p) => ({ ...p, grau: 0, entrada: [], saida: [] }));
+    porId = new Map(nos.map((n) => [n.id, n]));
+    arestas = dados.indicacoes
+      .filter((a) => porId.has(a.de) && porId.has(a.para))
+      .map((a) => ({ source: porId.get(a.de), target: porId.get(a.para), anos: a.anos }));
+    for (const a of arestas) {
+      a.source.grau++; a.target.grau++;
+      a.source.saida.push(a); a.target.entrada.push(a);
+    }
+    for (const n of nos) n.r = 1.8 + Math.sqrt(n.grau) * 1.35;
+
+    preencheControles(dados);
+    aviso.hidden = true;
+    redimensiona();
+    simula();
+    aplicaFiltro();
+    abreDoEndereco();
+  }
+
+  function preencheControles(dados) {
+    const areas = new Map(), locais = new Map(), anos = new Set();
+    for (const n of nos) {
+      for (const a of n.areas || []) areas.set(a, (areas.get(a) || 0) + 1);
+      if (n.localizacao) locais.set(n.localizacao, (locais.get(n.localizacao) || 0) + 1);
+      for (const a of n.anos || []) anos.add(a);
+      for (const a of n.anos_indicou || []) anos.add(a);
+    }
+    const ordena = (m) => [...m].sort((a, b) => a[0].localeCompare(b[0], "pt-BR"));
+    for (const [a, q] of ordena(areas)) $("f-area").append(el("option", { value: a, textContent: `${a} (${q})` }));
+    for (const [l, q] of ordena(locais)) $("f-local").append(el("option", { value: l, textContent: `${l} (${q})` }));
+    for (const a of [...anos].sort()) $("f-ano").append(el("option", { value: a, textContent: a }));
+    const lista = $("nomes");
+    for (const n of [...nos].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))) lista.append(el("option", { value: n.nome }));
+    const data = new Date(dados.meta.gerado_em + "T12:00").toLocaleDateString("pt-BR");
+    $("totais").textContent = `${numero(nos.length)} estrelas e ${numero(arestas.length)} indicações. Atualizado em ${data}.`;
+  }
+
+  // ---------- simulação ----------
+  let simulacao;
+  function simula() {
+    simulacao = d3.forceSimulation(nos)
+      .force("link", d3.forceLink(arestas).distance(28).strength(0.6))
+      .force("carga", d3.forceManyBody().strength(-22).distanceMax(320))
+      .force("x", d3.forceX(0).strength(0.045))
+      .force("y", d3.forceY(0).strength(0.045))
+      .force("colisao", d3.forceCollide((n) => n.r + 1.4).iterations(1))
+      .alphaDecay(0.03)
+      .stop();
+
+    const aoTerminar = () => {
+      raioMapa = d3.max(nos, (n) => Math.hypot(n.x, n.y)) || 400;
+      if (!usuarioMoveu) encaixa(!semMovimento());
+      desenha();
+    };
+    if (semMovimento()) {
+      for (let i = 0; i < 260; i++) simulacao.tick();
+      aoTerminar();
+    } else {
+      for (let i = 0; i < 60; i++) simulacao.tick();
+      raioMapa = d3.max(nos, (n) => Math.hypot(n.x, n.y)) || 400;
+      encaixa(false);
+      simulacao.on("tick", () => { if (!usuarioMoveu) encaixa(false); desenha(); })
+        .on("end", aoTerminar)
+        .restart();
+    }
+  }
+
+  // ---------- zoom ----------
+  const zoom = d3.zoom()
+    .scaleExtent([0.08, 12])
+    .clickDistance(4)
+    .on("zoom", (ev) => {
+      transformacao = ev.transform;
+      if (ev.sourceEvent) usuarioMoveu = true;
+      desenha();
+    });
+  d3.select(tela).call(zoom).on("dblclick.zoom", null);
+
+  function encaixa(animado) {
+    if (!nos.length) return;
+    const visiveis = correspondentes ? nos.filter((n) => correspondentes.has(n)) : nos;
+    if (!visiveis.length) return;
+    const [x0, x1] = d3.extent(visiveis, (n) => n.x);
+    const [y0, y1] = d3.extent(visiveis, (n) => n.y);
+    const k = Math.min(8, 0.92 / Math.max((x1 - x0 + 40) / largura, (y1 - y0 + 40) / altura));
+    const t = d3.zoomIdentity.translate(largura / 2, altura / 2).scale(k).translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
+    const sel = d3.select(tela);
+    if (animado && !semMovimento()) sel.transition().duration(600).call(zoom.transform, t);
+    else sel.call(zoom.transform, t);
+  }
+  $("mais").onclick = () => d3.select(tela).transition().duration(250).call(zoom.scaleBy, 1.6);
+  $("menos").onclick = () => d3.select(tela).transition().duration(250).call(zoom.scaleBy, 1 / 1.6);
+  $("encaixar").onclick = () => { usuarioMoveu = true; encaixa(true); };
+
+  function centraliza(n) {
+    usuarioMoveu = true;
+    const k = Math.max(transformacao.k, 2.2);
+    const aberto = perfil.classList.contains("aberto");
+    const celular = window.innerWidth <= 760;
+    const dx = !celular && aberto ? -190 : 0;
+    const dy = celular && aberto ? -altura * 0.3 : 0;
+    const t = d3.zoomIdentity.translate(largura / 2 + dx, altura / 2 + dy).scale(k).translate(-n.x, -n.y);
+    const sel = d3.select(tela);
+    if (semMovimento()) sel.call(zoom.transform, t);
+    else sel.transition().duration(500).call(zoom.transform, t);
+  }
+
+  // ---------- desenho ----------
+  function redimensiona() {
+    const r = palco.getBoundingClientRect();
+    largura = r.width; altura = r.height;
+    const dpr = window.devicePixelRatio || 1;
+    tela.width = Math.round(largura * dpr);
+    tela.height = Math.round(altura * dpr);
+    geraFundo();
+    desenha();
+  }
+  window.addEventListener("resize", redimensiona);
+
+  // de perto, o tamanho na tela cresce só com a raiz do zoom
+  const raio = (n) => n.r / Math.max(1, Math.sqrt(transformacao.k / 1.6));
+  const corDe = (n) => (n.papel === "ambos" ? C.branca : n.papel === "indicador" ? C.azul : C.ouro);
+  const visivel = (n) => !correspondentes || correspondentes.has(n);
+
+  function desenhaGrade(k) {
+    // círculos e raios de uma carta celeste, centrados no mapa
+    ctx.strokeStyle = C.grade;
+    ctx.lineWidth = 1 / k;
+    const passo = raioMapa / 4;
+    ctx.beginPath();
+    for (let i = 1; i <= 5; i++) {
+      ctx.moveTo(passo * i, 0);
+      ctx.arc(0, 0, passo * i, 0, 2 * Math.PI);
+    }
+    for (let a = 0; a < 12; a++) {
+      const ang = (a * Math.PI) / 6;
+      ctx.moveTo(Math.cos(ang) * passo * 0.5, Math.sin(ang) * passo * 0.5);
+      ctx.lineTo(Math.cos(ang) * passo * 5, Math.sin(ang) * passo * 5);
+    }
+    ctx.stroke();
+  }
+
+  function desenha() {
+    if (!largura) return;
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, tela.width, tela.height);
+    ctx.drawImage(fundo, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.save();
+    ctx.translate(transformacao.x, transformacao.y);
+    ctx.scale(transformacao.k, transformacao.k);
+    const k = transformacao.k;
+    const foco = selecionado ? vizinhosSel : null;
+
+    desenhaGrade(k);
+
+    // linhas entre estrelas
+    ctx.lineWidth = 0.8 / k;
+    ctx.strokeStyle = C.fio;
+    ctx.beginPath();
+    for (const a of arestas) {
+      if (!visivel(a.source) || !visivel(a.target)) continue;
+      if (foco && (a.source === selecionado || a.target === selecionado)) continue;
+      ctx.moveTo(a.source.x, a.source.y);
+      ctx.lineTo(a.target.x, a.target.y);
+    }
+    ctx.stroke();
+    if (selecionado) {
+      // a "constelação" da pessoa selecionada
+      ctx.lineWidth = 1.4 / k;
+      ctx.strokeStyle = C.fioForte;
+      ctx.beginPath();
+      for (const a of [...selecionado.entrada, ...selecionado.saida]) {
+        ctx.moveTo(a.source.x, a.source.y);
+        ctx.lineTo(a.target.x, a.target.y);
+      }
+      ctx.stroke();
+    }
+
+    // estrelas: núcleo + halo suave nas maiores
+    for (const n of nos) {
+      const apagado = !visivel(n) || (foco && !foco.has(n));
+      const c = corDe(n);
+      const r = raio(n);
+      if (!apagado && n.r > 4) {
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = c;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r * 2.1, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      ctx.globalAlpha = apagado ? 0.14 : 1;
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.papel === "ambos" ? r * 0.75 : r, 0, 2 * Math.PI);
+      ctx.fill();
+      if (n.papel === "ambos") {
+        ctx.strokeStyle = c;
+        ctx.lineWidth = Math.max(0.6 / k, r * 0.16);
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r * 1.35, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    if (selecionado) {
+      // órbita tracejada em volta da selecionada
+      ctx.setLineDash([4 / k, 3 / k]);
+      ctx.lineWidth = 1.5 / k;
+      ctx.strokeStyle = C.ouro;
+      ctx.beginPath();
+      ctx.arc(selecionado.x, selecionado.y, raio(selecionado) * 1.35 + 6 / k, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // nomes, em itálico como nos atlas
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.font = `italic 400 ${12 / k}px "Atkinson Hyperlegible", system-ui, sans-serif`;
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 3.5 / k;
+    ctx.strokeStyle = C.ceu;
+    const [vx0, vy0] = transformacao.invert([0, 0]);
+    const [vx1, vy1] = transformacao.invert([largura, altura]);
+    for (const n of nos) {
+      let destaque;
+      if (foco) destaque = n === selecionado || (foco.has(n) && k >= 1.2);
+      else if (k > 2.6) destaque = visivel(n);
+      else destaque = visivel(n) && ((k > 1.1 && n.grau >= 10) || (k > 1.7 && n.grau >= 4));
+      if (!destaque || n.x < vx0 || n.x > vx1 || n.y < vy0 || n.y > vy1) continue;
+      const y = n.y + raio(n) * (n.papel === "ambos" ? 1.35 : 1) + 3 / k;
+      ctx.fillStyle = n === selecionado ? C.ouro : C.texto;
+      ctx.strokeText(n.nome, n.x, y);
+      ctx.fillText(n.nome, n.x, y);
+    }
+    ctx.restore();
+  }
+
+  // ---------- interação ----------
+  function noEm(ev) {
+    const [px, py] = d3.pointer(ev, tela);
+    const [x, y] = transformacao.invert([px, py]);
+    let melhor = null, dist = Infinity;
+    for (const n of nos) {
+      if (!visivel(n)) continue;
+      const d = Math.hypot(n.x - x, n.y - y) - raio(n);
+      if (d < dist) { dist = d; melhor = n; }
+    }
+    return dist <= 6 / transformacao.k ? { n: melhor, px, py } : null;
+  }
+
+  tela.addEventListener("pointermove", (ev) => {
+    if (ev.buttons) return;
+    const achado = noEm(ev);
+    tela.classList.toggle("sobre-no", !!achado);
+    if (achado) {
+      rotulo.textContent = achado.n.nome;
+      rotulo.style.left = achado.px + "px";
+      rotulo.style.top = achado.py + "px";
+      rotulo.style.display = "block";
+    } else rotulo.style.display = "none";
+  });
+  tela.addEventListener("pointerleave", () => { rotulo.style.display = "none"; });
+  tela.addEventListener("click", (ev) => {
+    const achado = noEm(ev);
+    if (achado) seleciona(achado.n, false);
+    else fechaPerfil();
+  });
+
+  function seleciona(n, centralizar = true) {
+    selecionado = n;
+    vizinhosSel = new Set([n]);
+    for (const a of n.entrada) vizinhosSel.add(a.source);
+    for (const a of n.saida) vizinhosSel.add(a.target);
+    mostraPerfil(n);
+    if (location.hash !== "#" + n.id) history.replaceState(null, "", "#" + n.id);
+    if (centralizar) centraliza(n);
+    desenha();
+  }
+
+  function fechaPerfil() {
+    selecionado = null;
+    vizinhosSel = new Set();
+    perfil.classList.remove("aberto");
+    perfil.setAttribute("aria-hidden", "true");
+    perfil.inert = true;
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+    desenha();
+  }
+  $("fechar").onclick = fechaPerfil;
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && selecionado) fechaPerfil(); });
+
+  function abreDoEndereco() {
+    const id = decodeURIComponent(location.hash.slice(1));
+    const n = id && porId.get(id);
+    if (n) seleciona(n);
+  }
+  window.addEventListener("hashchange", abreDoEndereco);
+
+  // ---------- painel de perfil ----------
+  function botaoPessoa(n, anos) {
+    const b = el("button", { type: "button" }, el("span", { textContent: n.nome }), anos ? el("span", { className: "anos", textContent: anos }) : null);
+    b.onclick = () => seleciona(n);
+    return el("li", {}, b);
+  }
+  function fichas(valores, campo) {
+    const caixa = el("div", { className: "fichas" });
+    for (const v of valores) {
+      const b = el("button", { type: "button", className: "ficha", textContent: v, title: "Filtrar por " + v });
+      b.onclick = () => { $(campo).value = v; mudouFiltro(); };
+      caixa.append(b);
+    }
+    return caixa;
+  }
+  function iconePapel(papel) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", "14"); svg.setAttribute("height", "14"); svg.setAttribute("aria-hidden", "true");
+    const c = document.createElementNS(ns, "circle");
+    c.setAttribute("cx", "7"); c.setAttribute("cy", "7"); c.setAttribute("r", papel === "ambos" ? "3" : "4.5");
+    c.setAttribute("fill", papel === "ambos" ? C.branca : papel === "indicador" ? C.azul : C.ouro);
+    svg.append(c);
+    if (papel === "ambos") {
+      const o = document.createElementNS(ns, "circle");
+      o.setAttribute("cx", "7"); o.setAttribute("cy", "7"); o.setAttribute("r", "6");
+      o.setAttribute("fill", "none"); o.setAttribute("stroke", C.branca);
+      svg.append(o);
+    }
+    return svg;
+  }
+
+  function mostraPerfil(n) {
+    $("perfil-nome").textContent = n.nome;
+    perfil.dataset.papel = n.papel;
+    const corpo = $("perfil-corpo");
+    corpo.replaceChildren();
+    corpo.append(el("p", { className: "papel" }, iconePapel(n.papel), PAPEIS[n.papel]));
+    if (n.ocupacao) corpo.append(el("p", { className: "ocupacao", textContent: n.ocupacao }));
+
+    const dl = el("dl", { className: "dados" });
+    const linha = (rot, valor) => { if (valor) dl.append(el("dt", { textContent: rot }), el("dd", {}, valor)); };
+    if (n.areas && n.areas.length) linha(n.areas.length > 1 ? "Áreas" : "Área", fichas(n.areas, "f-area"));
+    if (n.localizacao) linha("Onde", fichas([n.localizacao], "f-local"));
+    if (n.anos && n.anos.length) linha("Indicado(a) em", textoAnos(n.anos));
+    if (n.anos_indicou && n.anos_indicou.length) linha("Indicou em", textoAnos(n.anos_indicou));
+    if (n.egresso && n.egresso !== "Não informado") linha("Egresso UEMG", n.egresso);
+    const links = [...new Set([...extraiLinks(n.site), ...extraiLinks(n.redes_sociais)])];
+    if (links.length) {
+      const caixa = el("div");
+      for (const u of links) caixa.append(el("div", {}, el("a", { href: u, target: "_blank", rel: "noopener noreferrer", textContent: rotuloLink(u) })));
+      linha("Links", caixa);
+    }
+    if (n.email) linha("E-mail", el("a", { href: "mailto:" + n.email, textContent: n.email }));
+    if (dl.children.length) corpo.append(dl);
+    if (n.autoindicacao) corpo.append(el("p", { className: "nota", textContent: "Também se listou como referência na própria indicação." }));
+
+    const porQuem = [...n.entrada].sort((a, b) => a.source.nome.localeCompare(b.source.nome, "pt-BR"));
+    if (n.papel !== "indicador" && (porQuem.length || !n.autoindicacao)) {
+      corpo.append(el("h3", { textContent: `Indicado(a) por ${porQuem.length || ""}`.trim() }));
+      corpo.append(porQuem.length
+        ? el("ul", { className: "lista" }, ...porQuem.map((a) => botaoPessoa(a.source, textoAnos(a.anos))))
+        : el("p", { className: "nota", textContent: "A planilha não registra quem indicou." }));
+    }
+    const quem = [...n.saida].sort((a, b) => a.target.nome.localeCompare(b.target.nome, "pt-BR"));
+    if (quem.length) {
+      corpo.append(el("h3", { textContent: `Indicou ${quem.length}` }));
+      corpo.append(el("ul", { className: "lista" }, ...quem.map((a) => botaoPessoa(a.target, textoAnos(a.anos)))));
+    }
+    corpo.scrollTop = 0;
+    perfil.classList.add("aberto");
+    perfil.setAttribute("aria-hidden", "false");
+    perfil.inert = false;
+  }
+
+  // ---------- busca e filtros ----------
+  const busca = $("busca");
+  function buscar() {
+    const termo = busca.value.trim().toLocaleLowerCase("pt-BR");
+    if (!termo) return;
+    const n = nos.find((x) => x.nome.toLocaleLowerCase("pt-BR") === termo)
+      || nos.find((x) => x.nome.toLocaleLowerCase("pt-BR").includes(termo));
+    if (n) {
+      if (!visivel(n)) limpaFiltros();
+      seleciona(n);
+    }
+  }
+  busca.addEventListener("change", buscar);
+  busca.addEventListener("keydown", (ev) => { if (ev.key === "Enter") buscar(); });
+
+  function mudouFiltro() {
+    filtro.area = $("f-area").value;
+    filtro.local = $("f-local").value;
+    filtro.ano = $("f-ano").value ? Number($("f-ano").value) : "";
+    aplicaFiltro();
+    if (selecionado) fechaPerfil();
+    usuarioMoveu = true;
+    encaixa(true);
+  }
+  for (const id of ["f-area", "f-local", "f-ano"]) $(id).addEventListener("change", mudouFiltro);
+
+  function limpaFiltros() {
+    for (const id of ["f-area", "f-local", "f-ano"]) $(id).value = "";
+    filtro.area = filtro.local = filtro.ano = "";
+    aplicaFiltro();
+  }
+  $("limpar").onclick = () => { limpaFiltros(); encaixa(true); };
+
+  function aplicaFiltro() {
+    const ativo = filtro.area || filtro.local || filtro.ano;
+    if (!ativo) {
+      correspondentes = null;
+    } else {
+      const ok = new Set();
+      for (const n of nos) {
+        if (n.papel === "indicador") continue;
+        if (filtro.area && !(n.areas || []).includes(filtro.area)) continue;
+        if (filtro.local && n.localizacao !== filtro.local) continue;
+        if (filtro.ano && !(n.anos || []).includes(filtro.ano)) continue;
+        ok.add(n);
+      }
+      for (const a of arestas) {
+        if (!ok.has(a.target)) continue;
+        if (filtro.ano && a.anos.length && !a.anos.includes(filtro.ano)) continue;
+        ok.add(a.source);
+      }
+      correspondentes = ok;
+    }
+    const total = correspondentes ? correspondentes.size : nos.length;
+    $("contagem").textContent = ativo ? `${numero(total)} de ${numero(nos.length)} estrelas` : "";
+    desenha();
+  }
+
+  $("alternar-filtros").onclick = (ev) => {
+    const aberto = $("lateral").classList.toggle("mostrar-filtros");
+    ev.currentTarget.setAttribute("aria-expanded", String(aberto));
+    ev.currentTarget.textContent = aberto ? "Esconder filtros" : "Mostrar filtros";
+  };
+})();
+</script>
+</body>
+</html>
