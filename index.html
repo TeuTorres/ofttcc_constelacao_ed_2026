@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Constelação ED — Rede de indicações do Design UEMG</title>
-<meta name="description" content="Um mapa das referências indicadas por estudantes de Design Gráfico da UEMG: profissionais, estúdios e artistas, ligados por quem os indicou.">
+<meta name="description" content="Um mapa das referências indicadas por estudantes de Design da UEMG: profissionais, estúdios e artistas, ligados por quem os indicou.">
 <meta name="theme-color" content="#0b1433">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1433'/%3E%3Cpath d='M16 5l2.4 8.6L27 16l-8.6 2.4L16 27l-2.4-8.6L5 16l8.6-2.4z' fill='%23f2c46d'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -124,6 +124,44 @@
   /* com o perfil aberto, os botões ficam à esquerda do painel, sem serem cobertos */
   .palco:has(.perfil.aberto) .zoom { right: calc(min(390px, 100% - 36px) + 36px); }
 
+  /* ---------- resultados ---------- */
+  .resultados {
+    position: absolute; top: 18px; left: 18px; bottom: 18px; width: min(360px, calc(100% - 36px));
+    background: var(--ceu-2); border: 1px solid var(--borda); border-radius: 10px;
+    display: flex; flex-direction: column; overflow: hidden; z-index: 1;
+    transform: translateX(calc(-100% - 40px)); transition: transform 0.25s ease;
+  }
+  .resultados.aberto { transform: none; }
+  .resultados-topo { padding: 18px 20px 12px; border-bottom: 1px solid var(--borda-suave); display: grid; gap: 10px; }
+  .resultados-topo .linha { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .resultados h2 { font-family: var(--fonte-titulo); font-weight: 400; font-style: italic; font-size: 28px; line-height: 1; margin: 0; }
+  .resultados .resumo { margin: 4px 0 0; font-size: 14px; color: var(--texto-2); }
+  .ordem { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--texto-2); }
+  .ordem select { padding: 4px 8px; background: var(--ceu); border: 1px solid var(--borda); border-radius: 6px; font-size: 13px; }
+  .lista-resultados { list-style: none; margin: 0; padding: 6px 10px 16px; overflow-y: auto; display: grid; gap: 2px; align-content: start; }
+  .lista-resultados h3 {
+    font-size: 13px; font-weight: 700; color: var(--texto-2); margin: 14px 10px 4px;
+  }
+  .resultado { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 10px; border-radius: 8px; }
+  .resultado:hover, .resultado:focus-within { background: var(--ceu-3); }
+  .resultado button {
+    grid-column: 1; background: none; border: 0; padding: 0; text-align: left; cursor: pointer;
+    font-size: 16px; font-weight: 700; line-height: 1.3;
+  }
+  .resultado button::after { content: ""; position: absolute; inset: 0; } /* a linha inteira é clicável */
+  .resultado { position: relative; }
+  .resultado .qtd { grid-column: 2; grid-row: 1; font-size: 13px; color: var(--texto-2); white-space: nowrap; }
+  .resultado .ocup { grid-column: 1 / -1; font-size: 14px; color: var(--texto); }
+  .resultado .meta { grid-column: 1 / -1; font-size: 13px; color: var(--texto-2); }
+  .resultado .link { grid-column: 1 / -1; font-size: 13px; position: relative; z-index: 1; justify-self: start; }
+  .resultado.selecionado { background: var(--ceu-3); box-shadow: inset 3px 0 0 var(--ouro); }
+  .vazio { padding: 16px 10px; color: var(--texto-2); font-size: 14px; }
+  .ver-lista {
+    background: none; border: 1px solid var(--borda); border-radius: 999px; padding: 4px 12px;
+    font-size: 13px; cursor: pointer;
+  }
+  .ver-lista:hover { border-color: var(--ouro); }
+
   /* ---------- perfil ---------- */
   .perfil {
     position: absolute; top: 18px; right: 18px; bottom: 18px; width: min(390px, calc(100% - 36px));
@@ -185,9 +223,15 @@
     }
     .zoom #mais, .zoom #menos, .zoom #encaixar { display: none; }
     .zoom { right: 12px; bottom: 12px; }
+    .resultados {
+      top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 62%;
+      transform: translateY(calc(100% + 40px));
+    }
+    .palco:has(.perfil.aberto) .resultados { visibility: hidden; }
+    .palco:has(.resultados.aberto) .zoom { bottom: auto; top: 12px; }
     .palco:has(.perfil.aberto) .zoom { right: 12px; bottom: auto; top: 12px; }
   }
-  @media (prefers-reduced-motion: reduce) { .perfil { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .perfil, .resultados { transition: none; } }
 </style>
 </head>
 <body>
@@ -199,14 +243,15 @@
     </header>
 
     <div class="campo">
-      <label for="busca">Buscar pessoa ou estúdio</label>
-      <input id="busca" type="search" list="nomes" autocomplete="off" placeholder="Ex.: 62 pontos">
+      <label for="busca">Buscar por nome, ocupação ou área</label>
+      <input id="busca" type="search" list="nomes" autocomplete="off" placeholder="Ex.: ilustradora, 62 pontos">
       <datalist id="nomes"></datalist>
     </div>
 
     <div class="acoes">
       <button class="botao-texto so-celular" id="alternar-filtros" aria-expanded="false" aria-controls="filtros">Mostrar filtros</button>
       <span class="contagem" id="contagem" aria-live="polite"></span>
+      <button class="ver-lista" id="ver-lista" hidden>Ver lista</button>
     </div>
 
     <div class="filtros" id="filtros">
@@ -222,7 +267,7 @@
         <label for="f-ano">Ano da indicação</label>
         <select id="f-ano"><option value="">Todos os anos</option></select>
       </div>
-      <div class="acoes"><button class="botao-texto" id="limpar">Limpar filtros</button></div>
+      <div class="acoes"><button class="botao-texto" id="limpar">Limpar busca e filtros</button></div>
     </div>
 
     <ul class="legenda" aria-label="Legenda">
@@ -247,6 +292,26 @@
       <button id="encaixar" aria-label="Ver o mapa inteiro">⤢</button>
       <button id="movimento" aria-pressed="true" aria-label="Pausar o movimento das estrelas" title="Pausar o movimento das estrelas">❚❚</button>
     </div>
+
+    <section class="resultados" id="resultados" aria-labelledby="resultados-titulo" aria-hidden="true" inert>
+      <div class="resultados-topo">
+        <div class="linha">
+          <div>
+            <h2 id="resultados-titulo">Resultados</h2>
+            <p class="resumo" id="resultados-resumo"></p>
+          </div>
+          <button class="fechar" id="fechar-resultados" aria-label="Fechar lista de resultados">×</button>
+        </div>
+        <label class="ordem">Ordenar por
+          <select id="ordem">
+            <option value="indicacoes">Mais indicados</option>
+            <option value="recentes">Indicados mais recentemente</option>
+            <option value="nome">Nome (A–Z)</option>
+          </select>
+        </label>
+      </div>
+      <ul class="lista-resultados" id="lista-resultados"></ul>
+    </section>
 
     <section class="perfil" id="perfil" aria-labelledby="perfil-nome" aria-hidden="true" inert>
       <div class="perfil-topo">
@@ -287,7 +352,9 @@
   let usuarioMoveu = false;
   let largura = 0, altura = 0;
   let raioMapa = 400;
-  const filtro = { area: "", local: "", ano: "" };
+  const filtro = { texto: "", area: "", local: "", ano: "" };
+  // comparação sem acento e sem diferença de maiúsculas
+  const normaliza = (t) => (t || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
   let correspondentes = null;
 
   const css = getComputedStyle(document.documentElement);
@@ -363,7 +430,11 @@
       a.source.grau++; a.target.grau++;
       a.source.saida.push(a); a.target.entrada.push(a);
     }
-    for (const n of nos) n.r = 1.8 + Math.sqrt(n.grau) * 1.35;
+    for (const n of nos) {
+      n.r = 1.8 + Math.sqrt(n.grau) * 1.35;
+      n.textoBusca = normaliza([n.nome, n.ocupacao, ...(n.areas || [])].join(" | "));
+      n.nomeBusca = normaliza(n.nome);
+    }
 
     preencheControles(dados);
     aviso.hidden = true;
@@ -462,14 +533,29 @@
   });
   d3.select(tela).call(zoom).on("dblclick.zoom", null);
 
+  // espaço da tela coberto pelos painéis abertos (lista à esquerda, perfil à direita)
+  function margensPaineis() {
+    const celular = window.innerWidth <= 760;
+    const listaAberta = $("resultados").classList.contains("aberto");
+    const perfilAberto = perfil.classList.contains("aberto");
+    if (celular) return { esq: 0, dir: 0, baixo: listaAberta && !perfilAberto ? altura * 0.62 : 0 };
+    return {
+      esq: listaAberta ? Math.min(360, largura - 36) + 18 : 0,
+      dir: perfilAberto ? Math.min(390, largura - 36) + 18 : 0,
+      baixo: 0,
+    };
+  }
+
   function encaixa(animado) {
     if (!nos.length) return;
     const visiveis = correspondentes ? nos.filter((n) => correspondentes.has(n)) : nos;
     if (!visiveis.length) return;
     const [x0, x1] = d3.extent(visiveis, (n) => n.bx ?? n.x);
     const [y0, y1] = d3.extent(visiveis, (n) => n.by ?? n.y);
-    const k = Math.min(8, 0.92 / Math.max((x1 - x0 + 40) / largura, (y1 - y0 + 40) / altura));
-    const t = d3.zoomIdentity.translate(largura / 2, altura / 2).scale(k).translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
+    const m = margensPaineis();
+    const w = Math.max(120, largura - m.esq - m.dir), h = Math.max(120, altura - m.baixo);
+    const k = Math.min(8, 0.92 / Math.max((x1 - x0 + 40) / w, (y1 - y0 + 40) / h));
+    const t = d3.zoomIdentity.translate(m.esq + w / 2, h / 2).scale(k).translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
     const sel = d3.select(tela);
     if (animado && !semMovimento()) sel.transition().duration(600).call(zoom.transform, t);
     else sel.call(zoom.transform, t);
@@ -481,11 +567,11 @@
   function centraliza(n) {
     usuarioMoveu = true;
     const k = Math.max(transformacao.k, 2.2);
-    const aberto = perfil.classList.contains("aberto");
+    const m = margensPaineis();
     const celular = window.innerWidth <= 760;
-    const dx = !celular && aberto ? -190 : 0;
-    const dy = celular && aberto ? -altura * 0.3 : 0;
-    const t = d3.zoomIdentity.translate(largura / 2 + dx, altura / 2 + dy).scale(k).translate(-n.bx, -n.by);
+    const cx = m.esq + (largura - m.esq - m.dir) / 2;
+    const cy = celular && perfil.classList.contains("aberto") ? altura * 0.2 : (altura - m.baixo) / 2;
+    const t = d3.zoomIdentity.translate(cx, cy).scale(k).translate(-n.bx, -n.by);
     const sel = d3.select(tela);
     if (semMovimento()) sel.call(zoom.transform, t);
     else sel.transition().duration(500).call(zoom.transform, t);
@@ -702,6 +788,7 @@
     for (const a of n.entrada) vizinhosSel.add(a.source);
     for (const a of n.saida) vizinhosSel.add(a.target);
     mostraPerfil(n);
+    for (const li of listaEl.children) li.classList.toggle("selecionado", li.dataset.id === n.id);
     if (location.hash !== "#" + n.id) history.replaceState(null, "", "#" + n.id);
     if (centralizar) centraliza(n);
     agenda();
@@ -713,6 +800,7 @@
     perfil.classList.remove("aberto");
     perfil.setAttribute("aria-hidden", "true");
     perfil.inert = true;
+    for (const li of listaEl.children) li.classList.remove("selecionado");
     if (location.hash) history.replaceState(null, "", location.pathname + location.search);
     agenda();
   }
@@ -737,8 +825,8 @@
   // sistema, tem botão de pausa e desliga sozinha se o aparelho estiver lento.
   const FPS_DERIVA = 30;
   const CHAVE_PREFERENCIA = "constelacao-ed-movimento";
-  let derivaLigada = !semMovimento();
-  try { if (localStorage.getItem(CHAVE_PREFERENCIA) === "0") derivaLigada = false; } catch {}
+  let derivaLigada = false;
+  try { if (localStorage.getItem(CHAVE_PREFERENCIA) === "1" && !semMovimento()) derivaLigada = true; } catch {}
   let economico = false;
   let entrada = 1, inicioEntrada = 0;
   const elasticos = new Set();
@@ -994,63 +1082,167 @@
   }
 
   // ---------- busca e filtros ----------
+  // O texto e os filtros de área, localização e ano valem juntos: o
+  // resultado é quem atende a TODOS ao mesmo tempo.
   const busca = $("busca");
-  function buscar() {
-    const termo = busca.value.trim().toLocaleLowerCase("pt-BR");
-    if (!termo) return;
-    const n = nos.find((x) => x.nome.toLocaleLowerCase("pt-BR") === termo)
-      || nos.find((x) => x.nome.toLocaleLowerCase("pt-BR").includes(termo));
-    if (n) {
-      if (!visivel(n)) limpaFiltros();
-      seleciona(n);
-    }
-  }
-  busca.addEventListener("change", buscar);
-  busca.addEventListener("keydown", (ev) => { if (ev.key === "Enter") buscar(); });
+  let resultados = [];       // profissionais/referências que batem com a busca
+  let estudantes = [];       // estudantes cujo nome bate com o texto
+  let timerBusca = 0;
 
-  function mudouFiltro() {
-    filtro.area = $("f-area").value;
-    filtro.local = $("f-local").value;
-    filtro.ano = $("f-ano").value ? Number($("f-ano").value) : "";
-    aplicaFiltro();
-    if (selecionado) fechaPerfil();
-    usuarioMoveu = true;
-    encaixa(true);
-  }
-  for (const id of ["f-area", "f-local", "f-ano"]) $(id).addEventListener("change", mudouFiltro);
+  function ativo() { return !!(filtro.texto || filtro.area || filtro.local || filtro.ano); }
 
-  function limpaFiltros() {
-    for (const id of ["f-area", "f-local", "f-ano"]) $(id).value = "";
-    filtro.area = filtro.local = filtro.ano = "";
-    aplicaFiltro();
+  function bateTags(n) {
+    if (filtro.area && !(n.areas || []).includes(filtro.area)) return false;
+    if (filtro.local && n.localizacao !== filtro.local) return false;
+    if (filtro.ano && !(n.anos || []).includes(filtro.ano)) return false;
+    return true;
   }
-  $("limpar").onclick = () => { limpaFiltros(); encaixa(true); };
 
   function aplicaFiltro() {
-    const ativo = filtro.area || filtro.local || filtro.ano;
-    if (!ativo) {
+    const termos = normaliza(filtro.texto).split(/\s+/).filter(Boolean);
+    const bateTexto = (n) => termos.every((t) => n.textoBusca.includes(t));
+    const temTags = filtro.area || filtro.local || filtro.ano;
+    resultados = [];
+    estudantes = [];
+    if (!ativo()) {
       correspondentes = null;
     } else {
-      const ok = new Set();
       for (const n of nos) {
-        if (n.papel === "indicador") continue;
-        if (filtro.area && !(n.areas || []).includes(filtro.area)) continue;
-        if (filtro.local && n.localizacao !== filtro.local) continue;
-        if (filtro.ano && !(n.anos || []).includes(filtro.ano)) continue;
-        ok.add(n);
+        if (n.papel === "indicador") {
+          // estudantes só aparecem pela busca de nome, e só sem filtros de tag
+          if (!temTags && termos.length && termos.every((t) => n.nomeBusca.includes(t))) estudantes.push(n);
+          continue;
+        }
+        if (bateTags(n) && bateTexto(n)) resultados.push(n);
       }
+      const ok = new Set([...resultados, ...estudantes]);
+      // no mapa, mostra também quem indicou cada resultado (no ano filtrado)
+      const doResultado = new Set(resultados);
       for (const a of arestas) {
-        if (!ok.has(a.target)) continue;
+        if (!doResultado.has(a.target)) continue;
         if (filtro.ano && a.anos.length && !a.anos.includes(filtro.ano)) continue;
         ok.add(a.source);
       }
       correspondentes = ok;
     }
-    const total = correspondentes ? correspondentes.size : nos.length;
-    $("contagem").textContent = ativo ? `${numero(total)} de ${numero(nos.length)} estrelas` : "";
+    const total = resultados.length + estudantes.length;
+    $("contagem").textContent = ativo()
+      ? (total ? `${numero(resultados.length)} ${resultados.length === 1 ? "resultado" : "resultados"}` +
+          (estudantes.length ? ` e ${numero(estudantes.length)} ${estudantes.length === 1 ? "estudante" : "estudantes"}` : "")
+        : "Nenhum resultado")
+      : "";
+    montaLista();
     refazArvore();
     agenda();
   }
+
+  // ---------- lista de resultados ----------
+  const listaEl = $("lista-resultados");
+  const painelResultados = $("resultados");
+  let listaFechadaPeloUsuario = false;
+
+  function ordena(lista) {
+    const modo = $("ordem").value;
+    const porNome = (a, b) => a.nome.localeCompare(b.nome, "pt-BR");
+    if (modo === "nome") return lista.sort(porNome);
+    if (modo === "recentes") {
+      const ultimo = (n) => Math.max(0, ...(n.anos || []));
+      return lista.sort((a, b) => ultimo(b) - ultimo(a) || b.entrada.length - a.entrada.length || porNome(a, b));
+    }
+    return lista.sort((a, b) => b.entrada.length - a.entrada.length || porNome(a, b));
+  }
+
+  function itemResultado(n) {
+    const li = el("li", { className: "resultado" + (n === selecionado ? " selecionado" : "") });
+    li.dataset.id = n.id;
+    const b = el("button", { type: "button", textContent: n.nome });
+    b.onclick = () => seleciona(n);
+    li.append(b);
+    const q = n.entrada.length;
+    if (n.papel !== "indicador") li.append(el("span", { className: "qtd", textContent: q === 1 ? "1 indicação" : `${q} indicações` }));
+    if (n.ocupacao) li.append(el("span", { className: "ocup", textContent: n.ocupacao }));
+    const meta = [(n.areas || []).join(", "), n.localizacao].filter(Boolean).join(" · ");
+    if (meta) li.append(el("span", { className: "meta", textContent: meta }));
+    const link = extraiLinks(n.site)[0] || extraiLinks(n.redes_sociais)[0];
+    if (link) li.append(el("a", { className: "link", href: link, target: "_blank", rel: "noopener noreferrer", textContent: rotuloLink(link) + " ↗" }));
+    return li;
+  }
+
+  function montaLista() {
+    listaEl.replaceChildren();
+    if (!ativo()) { mostraLista(false); return; }
+    const partes = [];
+    const descricao = [filtro.texto && `“${filtro.texto}”`, filtro.area, filtro.local, filtro.ano].filter(Boolean).join(" · ");
+    $("resultados-resumo").textContent = descricao;
+    if (!resultados.length && !estudantes.length) {
+      listaEl.append(el("li", { className: "vazio", textContent: "Ninguém atende a todos esses critérios. Tente tirar um filtro ou usar uma palavra mais curta." }));
+    }
+    if (resultados.length) {
+      if (estudantes.length) listaEl.append(el("li", {}, el("h3", { textContent: `Referências (${resultados.length})` })));
+      for (const n of ordena([...resultados])) listaEl.append(itemResultado(n));
+    }
+    if (estudantes.length) {
+      listaEl.append(el("li", {}, el("h3", { textContent: `Estudantes que indicaram (${estudantes.length})` })));
+      for (const n of [...estudantes].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))) listaEl.append(itemResultado(n));
+    }
+    if (!listaFechadaPeloUsuario) mostraLista(true);
+    else atualizaBotaoLista();
+  }
+
+  function mostraLista(abrir) {
+    painelResultados.classList.toggle("aberto", abrir);
+    painelResultados.setAttribute("aria-hidden", String(!abrir));
+    painelResultados.inert = !abrir;
+    atualizaBotaoLista();
+  }
+  function atualizaBotaoLista() {
+    const b = $("ver-lista");
+    b.hidden = !ativo() || painelResultados.classList.contains("aberto");
+    b.textContent = "Ver lista";
+  }
+  $("fechar-resultados").onclick = () => { listaFechadaPeloUsuario = true; mostraLista(false); };
+  $("ver-lista").onclick = () => { listaFechadaPeloUsuario = false; mostraLista(true); $("lista-resultados").focus?.(); };
+  $("ordem").addEventListener("change", montaLista);
+
+  // ---------- eventos ----------
+  function mudouFiltro({ reenquadrar = true } = {}) {
+    filtro.texto = busca.value.trim();
+    filtro.area = $("f-area").value;
+    filtro.local = $("f-local").value;
+    filtro.ano = $("f-ano").value ? Number($("f-ano").value) : "";
+    listaFechadaPeloUsuario = false;
+    aplicaFiltro();
+    if (selecionado && !visivel(selecionado)) fechaPerfil();
+    if (reenquadrar) { usuarioMoveu = true; encaixa(true); }
+  }
+  for (const id of ["f-area", "f-local", "f-ano"]) $(id).addEventListener("change", () => mudouFiltro());
+
+  // digitar filtra ao vivo (com uma pequena pausa para não refazer a cada tecla)
+  busca.addEventListener("input", () => {
+    clearTimeout(timerBusca);
+    timerBusca = setTimeout(() => mudouFiltro(), 250);
+  });
+  // Enter ou escolher um nome da lista de sugestões abre o perfil exato
+  function abreNomeExato() {
+    const termo = normaliza(busca.value);
+    if (!termo) return;
+    const exato = nos.find((x) => x.nomeBusca === termo);
+    clearTimeout(timerBusca);
+    mudouFiltro({ reenquadrar: !exato });
+    const unico = resultados.length + estudantes.length === 1 ? (resultados[0] || estudantes[0]) : null;
+    const alvo = exato && visivel(exato) ? exato : unico;
+    if (alvo) seleciona(alvo);
+  }
+  busca.addEventListener("keydown", (ev) => { if (ev.key === "Enter") abreNomeExato(); });
+  busca.addEventListener("change", () => { if (nos.some((x) => x.nomeBusca === normaliza(busca.value))) abreNomeExato(); });
+
+  function limpaFiltros() {
+    busca.value = "";
+    for (const id of ["f-area", "f-local", "f-ano"]) $(id).value = "";
+    filtro.texto = filtro.area = filtro.local = filtro.ano = "";
+    aplicaFiltro();
+  }
+  $("limpar").onclick = () => { limpaFiltros(); encaixa(true); };
 
   $("alternar-filtros").onclick = (ev) => {
     const aberto = $("lateral").classList.toggle("mostrar-filtros");
