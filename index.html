@@ -73,6 +73,25 @@
   }
   .marca h1 em { font-style: italic; color: var(--ouro); }
   .marca p { margin: 14px 0 0; color: var(--texto-2); max-width: 32ch; }
+  .titulo-linha { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .botao-sobre {
+    flex: none; background: none; border: 1px solid var(--borda); border-radius: 999px;
+    padding: 5px 14px; font-size: 14px; cursor: pointer;
+  }
+  .botao-sobre:hover { border-color: var(--ouro); }
+  .sobre {
+    width: min(420px, calc(100% - 32px)); max-height: calc(100% - 48px); padding: 0;
+    background: var(--ceu-2); color: var(--texto); border: 1px solid var(--borda); border-radius: 12px;
+  }
+  .sobre::backdrop { background: rgba(5, 10, 28, 0.72); }
+  .sobre::before { content: ""; display: block; height: 3px; background: var(--ouro); }
+  .sobre-topo { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 20px 0; }
+  .sobre h2 { font-family: var(--fonte-titulo); font-weight: 400; font-size: 30px; line-height: 1; margin: 0; }
+  .sobre h2 em { font-style: italic; color: var(--ouro); }
+  .sobre-corpo { padding: 4px 20px 22px; }
+  .sobre-corpo p { margin: 12px 0 0; color: var(--texto-2); }
+  .sobre-corpo .links-externos { display: grid; gap: 8px; font-size: 15px; }
+  .marca .links-externos { display: grid; gap: 4px; margin-top: 10px; font-size: 14px; }
 
   .campo { display: flex; flex-direction: column; gap: 6px; }
   .campo label { font-size: 13px; font-weight: 700; color: var(--texto); }
@@ -234,7 +253,7 @@
     .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
     .lateral { gap: 14px; padding: 16px; border-right: 0; border-bottom: 1px solid var(--borda-suave); max-height: 60vh; }
     .marca h1 { font-size: 38px; }
-    .marca p, .rodape { display: none; }
+    .marca p, .marca .links-externos, .rodape { display: none; } /* ficam no pop-up "Sobre" */
     .so-celular { display: inline; }
     .lateral:not(.mostrar-filtros) .filtros, .lateral:not(.mostrar-filtros) .legenda { display: none; }
     .perfil {
@@ -258,8 +277,15 @@
 <div class="app">
   <aside class="lateral" id="lateral">
     <header class="marca">
-      <h1>Constelação <em>ED</em></h1>
+      <div class="titulo-linha">
+        <h1>Constelação <em>ED</em></h1>
+        <button class="botao-sobre so-celular" id="abrir-sobre" aria-haspopup="dialog" aria-controls="sobre">Sobre</button>
+      </div>
       <p>As referências indicadas por estudantes de Design da UEMG. Cada estrela é uma pessoa ou estúdio; as linhas mostram quem indicou quem.</p>
+      <p class="links-externos">
+        <a href="https://padlet.com/claudiovoltz/oficinas-tecnicas-de-tcc-2-2026-jbcxrhvzf5svzbf8" target="_blank" rel="noopener noreferrer">Link de visualização geral da disciplina ↗</a>
+        <a href="https://padlet.com/claudiovoltz/2-2026-visualizacao-de-dados-s0255sb1bfb76udr0pp1" target="_blank" rel="noopener noreferrer">Outras visualizações de dados ↗</a>
+      </p>
     </header>
 
     <div class="bloco-busca">
@@ -284,10 +310,6 @@
         <label for="f-local">Localização</label>
         <select id="f-local"><option value="">Todos os lugares</option></select>
       </div>
-      <div class="campo">
-        <label for="f-ano">Ano da indicação</label>
-        <select id="f-ano"><option value="">Todos os anos</option></select>
-      </div>
     </div>
 
     <button class="limpar" id="limpar" hidden>
@@ -302,10 +324,18 @@
     </ul>
 
     <div class="rodape">
-      <p>Clique numa estrela para ver o perfil. Role para aproximar e arraste para mover.</p>
+      <p>Clique numa estrela para ver o perfil e num espaço vazio para voltar ao mapa completo. Role para aproximar e arraste para mover.</p>
       <p id="totais"></p>
     </div>
   </aside>
+
+  <dialog class="sobre" id="sobre" aria-labelledby="sobre-titulo">
+    <div class="sobre-topo">
+      <h2 id="sobre-titulo">Constelação <em>ED</em></h2>
+      <button class="fechar" id="fechar-sobre" aria-label="Fechar">×</button>
+    </div>
+    <div class="sobre-corpo" id="sobre-corpo"></div>
+  </dialog>
 
   <main class="palco" id="palco">
     <canvas id="tela" aria-label="Mapa da rede de indicações. Use a busca para encontrar uma pessoa."></canvas>
@@ -377,7 +407,7 @@
   let usuarioMoveu = false;
   let largura = 0, altura = 0;
   let raioMapa = 400;
-  const filtro = { texto: "", area: "", local: "", ano: "" };
+  const filtro = { texto: "", area: "", local: "" };
   // comparação sem acento e sem diferença de maiúsculas
   const normaliza = (t) => (t || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
   let correspondentes = null;
@@ -477,17 +507,14 @@
   }
 
   function preencheControles(dados) {
-    const areas = new Map(), locais = new Map(), anos = new Set();
+    const areas = new Map(), locais = new Map();
     for (const n of nos) {
       for (const a of n.areas || []) areas.set(a, (areas.get(a) || 0) + 1);
       if (n.localizacao) locais.set(n.localizacao, (locais.get(n.localizacao) || 0) + 1);
-      for (const a of n.anos || []) anos.add(a);
-      for (const a of n.anos_indicou || []) anos.add(a);
     }
     const ordena = (m) => [...m].sort((a, b) => a[0].localeCompare(b[0], "pt-BR"));
     for (const [a, q] of ordena(areas)) $("f-area").append(el("option", { value: a, textContent: `${a} (${q})` }));
     for (const [l, q] of ordena(locais)) $("f-local").append(el("option", { value: l, textContent: `${l} (${q})` }));
-    for (const a of [...anos].sort()) $("f-ano").append(el("option", { value: a, textContent: a }));
     const lista = $("nomes");
     for (const n of [...nos].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))) lista.append(el("option", { value: n.nome }));
     const data = new Date(dados.meta.gerado_em + "T12:00").toLocaleDateString("pt-BR");
@@ -803,8 +830,14 @@
     if (suprimirClique) { suprimirClique = false; return; }
     const [px, py] = d3.pointer(ev, tela);
     const n = noEm(px, py);
-    if (n) { veioDaLista = false; seleciona(n, false); }
-    else fechaPerfil();
+    if (n) { veioDaLista = false; seleciona(n, false); return; }
+    // clique no vazio (arrastar o mapa não conta): volta ao mapa completo
+    if (selecionado) fechaPerfil();
+    if (ativo()) {
+      limpaFiltros();
+      usuarioMoveu = true;
+      encaixa(true);
+    }
   });
 
   function seleciona(n, centralizar = true) {
@@ -1119,19 +1152,18 @@
   let estudantes = [];       // estudantes cujo nome bate com o texto
   let timerBusca = 0;
 
-  function ativo() { return !!(filtro.texto || filtro.area || filtro.local || filtro.ano); }
+  function ativo() { return !!(filtro.texto || filtro.area || filtro.local); }
 
   function bateTags(n) {
     if (filtro.area && !(n.areas || []).includes(filtro.area)) return false;
     if (filtro.local && n.localizacao !== filtro.local) return false;
-    if (filtro.ano && !(n.anos || []).includes(filtro.ano)) return false;
     return true;
   }
 
   function aplicaFiltro() {
     const termos = normaliza(filtro.texto).split(/\s+/).filter(Boolean);
     const bateTexto = (n) => termos.every((t) => n.textoBusca.includes(t));
-    const temTags = filtro.area || filtro.local || filtro.ano;
+    const temTags = filtro.area || filtro.local;
     resultados = [];
     estudantes = [];
     if (!ativo()) {
@@ -1146,13 +1178,9 @@
         if (bateTags(n) && bateTexto(n)) resultados.push(n);
       }
       const ok = new Set([...resultados, ...estudantes]);
-      // no mapa, mostra também quem indicou cada resultado (no ano filtrado)
+      // no mapa, mostra também quem indicou cada resultado
       const doResultado = new Set(resultados);
-      for (const a of arestas) {
-        if (!doResultado.has(a.target)) continue;
-        if (filtro.ano && a.anos.length && !a.anos.includes(filtro.ano)) continue;
-        ok.add(a.source);
-      }
+      for (const a of arestas) if (doResultado.has(a.target)) ok.add(a.source);
       correspondentes = ok;
     }
     const total = resultados.length + estudantes.length;
@@ -1220,7 +1248,7 @@
     listaEl.replaceChildren();
     if (!ativo()) { mostraLista(false); return; }
     const partes = [];
-    const descricao = [filtro.texto && `“${filtro.texto}”`, filtro.area, filtro.local, filtro.ano].filter(Boolean).join(" · ");
+    const descricao = [filtro.texto && `“${filtro.texto}”`, filtro.area, filtro.local].filter(Boolean).join(" · ");
     $("resultados-resumo").textContent = descricao;
     if (!resultados.length && !estudantes.length) {
       listaEl.append(el("li", { className: "vazio", textContent: "Ninguém atende a todos esses critérios. Tente tirar um filtro ou usar uma palavra mais curta." }));
@@ -1244,7 +1272,7 @@
     atualizaBotaoLista();
   }
   function atualizaBotaoLista() {
-    const qtd = [filtro.texto, filtro.area, filtro.local, filtro.ano].filter(Boolean).length;
+    const qtd = [filtro.texto, filtro.area, filtro.local].filter(Boolean).length;
     $("limpar").hidden = qtd === 0;
     $("qtd-filtros").textContent = qtd;
     $("limpar").setAttribute("aria-label", `Limpar busca e filtros (${qtd} ${qtd === 1 ? "ativo" : "ativos"})`);
@@ -1261,13 +1289,12 @@
     filtro.texto = busca.value.trim();
     filtro.area = $("f-area").value;
     filtro.local = $("f-local").value;
-    filtro.ano = $("f-ano").value ? Number($("f-ano").value) : "";
     listaFechadaPeloUsuario = false;
     aplicaFiltro();
     if (selecionado && !visivel(selecionado)) fechaPerfil();
     if (reenquadrar) { usuarioMoveu = true; encaixa(true); }
   }
-  for (const id of ["f-area", "f-local", "f-ano"]) $(id).addEventListener("change", () => mudouFiltro());
+  for (const id of ["f-area", "f-local"]) $(id).addEventListener("change", () => mudouFiltro());
 
   // digitar filtra ao vivo (com uma pequena pausa para não refazer a cada tecla)
   busca.addEventListener("input", () => {
@@ -1290,8 +1317,8 @@
 
   function limpaFiltros() {
     busca.value = "";
-    for (const id of ["f-area", "f-local", "f-ano"]) $(id).value = "";
-    filtro.texto = filtro.area = filtro.local = filtro.ano = "";
+    for (const id of ["f-area", "f-local"]) $(id).value = "";
+    filtro.texto = filtro.area = filtro.local = "";
     aplicaFiltro();
   }
   $("limpar").onclick = () => {
@@ -1300,6 +1327,13 @@
     encaixa(true);
     busca.focus();
   };
+
+  // ---------- "Sobre" no celular ----------
+  const sobre = $("sobre");
+  for (const p of document.querySelectorAll(".marca p")) $("sobre-corpo").append(p.cloneNode(true));
+  $("abrir-sobre").onclick = () => sobre.showModal();
+  $("fechar-sobre").onclick = () => sobre.close();
+  sobre.addEventListener("click", (ev) => { if (ev.target === sobre) sobre.close(); }); // toque fora fecha
 
   $("alternar-filtros").onclick = (ev) => {
     const aberto = $("lateral").classList.toggle("mostrar-filtros");
