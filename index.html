@@ -209,6 +209,12 @@
     transform: translateX(calc(100% + 40px)); transition: transform 0.25s ease;
   }
   .perfil.aberto { transform: none; }
+  .perfil-botoes { display: flex; gap: 8px; flex: none; }
+  .perfil.minimizado { bottom: auto; }
+  .perfil.minimizado .perfil-corpo { display: none; }
+  .perfil.minimizado .perfil-topo { padding-bottom: 18px; align-items: center; }
+  .perfil.minimizado h2 { cursor: pointer; font-size: 26px; }
+  .palco:has(.perfil.aberto.minimizado) .zoom { right: 18px; }
   .perfil::before { content: ""; height: 3px; flex: none; background: var(--ouro); }
   .perfil[data-papel="indicador"]::before { background: var(--azul); }
   .perfil[data-papel="ambos"]::before { background: var(--branca); }
@@ -256,6 +262,7 @@
     .marca p, .marca .links-externos, .rodape { display: none; } /* ficam no pop-up "Sobre" */
     .so-celular { display: inline; }
     .lateral:not(.mostrar-filtros) .filtros, .lateral:not(.mostrar-filtros) .legenda { display: none; }
+    .perfil.minimizado { bottom: 8px; }
     .perfil {
       top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 70%;
       transform: translateY(calc(100% + 40px));
@@ -371,7 +378,10 @@
     <section class="perfil" id="perfil" aria-labelledby="perfil-nome" aria-hidden="true" inert>
       <div class="perfil-topo">
         <h2 id="perfil-nome"></h2>
-        <button class="fechar" id="fechar" aria-label="Fechar perfil">×</button>
+        <div class="perfil-botoes">
+          <button class="fechar" id="minimizar" aria-expanded="true" aria-controls="perfil-corpo" aria-label="Minimizar perfil" title="Minimizar">–</button>
+          <button class="fechar" id="fechar" aria-label="Fechar perfil">×</button>
+        </div>
       </div>
       <div class="perfil-corpo" id="perfil-corpo"></div>
     </section>
@@ -589,7 +599,7 @@
   function margensPaineis() {
     const celular = window.innerWidth <= 760;
     const listaAberta = $("resultados").classList.contains("aberto");
-    const perfilAberto = perfil.classList.contains("aberto");
+    const perfilAberto = perfil.classList.contains("aberto") && !perfil.classList.contains("minimizado");
     if (celular) return { esq: 0, dir: 0, baixo: listaAberta && !perfilAberto ? altura * 0.62 : 0 };
     return {
       esq: listaAberta ? Math.min(360, largura - 36) + 18 : 0,
@@ -856,6 +866,7 @@
     selecionado = null;
     vizinhosSel = new Set();
     perfil.classList.remove("aberto");
+    minimizaPerfil(false);
     perfil.setAttribute("aria-hidden", "true");
     perfil.inert = true;
     for (const li of listaEl.children) li.classList.remove("selecionado");
@@ -863,6 +874,18 @@
     agenda();
   }
   $("fechar").onclick = fechaPerfil;
+
+  // minimizar: o perfil fica só com o nome; clicar no nome ou em + expande
+  function minimizaPerfil(minimizar) {
+    perfil.classList.toggle("minimizado", minimizar);
+    const b = $("minimizar");
+    b.textContent = minimizar ? "+" : "–";
+    b.setAttribute("aria-expanded", String(!minimizar));
+    b.setAttribute("aria-label", minimizar ? "Expandir perfil" : "Minimizar perfil");
+    b.title = minimizar ? "Expandir" : "Minimizar";
+  }
+  $("minimizar").onclick = () => minimizaPerfil(!perfil.classList.contains("minimizado"));
+  $("perfil-nome").onclick = () => { if (perfil.classList.contains("minimizado")) minimizaPerfil(false); };
   document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && selecionado) fechaPerfil(); });
 
   function abreDoEndereco() {
