@@ -85,7 +85,27 @@
   }
   .campo input::placeholder { color: var(--texto-3); opacity: 1; }
   .campo input:focus, .campo select:focus { border-color: var(--ouro); outline: none; box-shadow: 0 0 0 1px var(--ouro); }
-  .filtros { display: grid; gap: 14px; }
+  .filtros { display: grid; gap: 12px; }
+  /* busca + filtros formam um bloco só, com o botão de limpar logo abaixo */
+  .bloco-busca { display: grid; gap: 12px; }
+  .limpar {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; padding: 9px 12px; cursor: pointer;
+    background: var(--ouro); color: var(--ceu); border: 1px solid var(--ouro); border-radius: 6px;
+    font-size: 14px; font-weight: 700;
+  }
+  .limpar:hover { background: #f7d590; border-color: #f7d590; }
+  .limpar[hidden] { display: none; }
+  .limpar .qtd-filtros {
+    background: var(--ceu); color: var(--ouro); border-radius: 999px;
+    min-width: 20px; padding: 0 6px; font-size: 12px; line-height: 20px;
+  }
+  .voltar {
+    display: inline-flex; align-items: center; gap: 6px; margin: 0 0 12px;
+    background: none; border: 1px solid var(--borda); border-radius: 999px;
+    padding: 4px 12px; font-size: 13px; cursor: pointer;
+  }
+  .voltar:hover { border-color: var(--ouro); }
   .acoes { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .botao-texto {
     background: none; border: 0; padding: 4px 0; cursor: pointer; font-size: 14px;
@@ -242,6 +262,7 @@
       <p>As referências indicadas por estudantes de Design da UEMG. Cada estrela é uma pessoa ou estúdio; as linhas mostram quem indicou quem.</p>
     </header>
 
+    <div class="bloco-busca">
     <div class="campo">
       <label for="busca">Buscar por nome, ocupação ou área</label>
       <input id="busca" type="search" list="nomes" autocomplete="off" placeholder="Ex.: ilustradora, 62 pontos">
@@ -267,7 +288,11 @@
         <label for="f-ano">Ano da indicação</label>
         <select id="f-ano"><option value="">Todos os anos</option></select>
       </div>
-      <div class="acoes"><button class="botao-texto" id="limpar">Limpar busca e filtros</button></div>
+    </div>
+
+    <button class="limpar" id="limpar" hidden>
+      <span aria-hidden="true">×</span> Limpar busca e filtros <span class="qtd-filtros" id="qtd-filtros"></span>
+    </button>
     </div>
 
     <ul class="legenda" aria-label="Legenda">
@@ -778,7 +803,7 @@
     if (suprimirClique) { suprimirClique = false; return; }
     const [px, py] = d3.pointer(ev, tela);
     const n = noEm(px, py);
-    if (n) seleciona(n, false);
+    if (n) { veioDaLista = false; seleciona(n, false); }
     else fechaPerfil();
   });
 
@@ -810,7 +835,7 @@
   function abreDoEndereco() {
     const id = decodeURIComponent(location.hash.slice(1));
     const n = id && porId.get(id);
-    if (n) seleciona(n);
+    if (n) { veioDaLista = false; seleciona(n); }
   }
   window.addEventListener("hashchange", abreDoEndereco);
 
@@ -1043,6 +1068,11 @@
     perfil.dataset.papel = n.papel;
     const corpo = $("perfil-corpo");
     corpo.replaceChildren();
+    if (veioDaLista && ativo()) {
+      const voltar = el("button", { type: "button", className: "voltar", textContent: `← Voltar aos ${resultados.length + estudantes.length} resultados` });
+      voltar.onclick = voltaParaLista;
+      corpo.append(voltar);
+    }
     corpo.append(el("p", { className: "papel" }, iconePapel(n.papel), PAPEIS[n.papel]));
     if (n.ocupacao) corpo.append(el("p", { className: "ocupacao", textContent: n.ocupacao }));
 
@@ -1140,6 +1170,17 @@
   const listaEl = $("lista-resultados");
   const painelResultados = $("resultados");
   let listaFechadaPeloUsuario = false;
+  let veioDaLista = false;
+
+  function voltaParaLista() {
+    const id = selecionado && selecionado.id;
+    veioDaLista = false;
+    fechaPerfil();
+    listaFechadaPeloUsuario = false;
+    mostraLista(true);
+    const item = id && listaEl.querySelector(`[data-id="${CSS.escape(id)}"]`);
+    if (item) { item.scrollIntoView({ block: "center" }); item.querySelector("button").focus({ preventScroll: true }); }
+  }
 
   function ordena(lista) {
     const modo = $("ordem").value;
@@ -1156,7 +1197,14 @@
     const li = el("li", { className: "resultado" + (n === selecionado ? " selecionado" : "") });
     li.dataset.id = n.id;
     const b = el("button", { type: "button", textContent: n.nome });
-    b.onclick = () => seleciona(n);
+    b.onclick = () => {
+      // a lista sai de cena para o mapa e o perfil respirarem;
+      // o perfil ganha um botão para voltar a ela
+      listaFechadaPeloUsuario = true;
+      veioDaLista = true;
+      mostraLista(false);
+      seleciona(n);
+    };
     li.append(b);
     const q = n.entrada.length;
     if (n.papel !== "indicador") li.append(el("span", { className: "qtd", textContent: q === 1 ? "1 indicação" : `${q} indicações` }));
@@ -1196,6 +1244,10 @@
     atualizaBotaoLista();
   }
   function atualizaBotaoLista() {
+    const qtd = [filtro.texto, filtro.area, filtro.local, filtro.ano].filter(Boolean).length;
+    $("limpar").hidden = qtd === 0;
+    $("qtd-filtros").textContent = qtd;
+    $("limpar").setAttribute("aria-label", `Limpar busca e filtros (${qtd} ${qtd === 1 ? "ativo" : "ativos"})`);
     const b = $("ver-lista");
     b.hidden = !ativo() || painelResultados.classList.contains("aberto");
     b.textContent = "Ver lista";
@@ -1231,7 +1283,7 @@
     mudouFiltro({ reenquadrar: !exato });
     const unico = resultados.length + estudantes.length === 1 ? (resultados[0] || estudantes[0]) : null;
     const alvo = exato && visivel(exato) ? exato : unico;
-    if (alvo) seleciona(alvo);
+    if (alvo) { veioDaLista = false; seleciona(alvo); }
   }
   busca.addEventListener("keydown", (ev) => { if (ev.key === "Enter") abreNomeExato(); });
   busca.addEventListener("change", () => { if (nos.some((x) => x.nomeBusca === normaliza(busca.value))) abreNomeExato(); });
@@ -1242,7 +1294,12 @@
     filtro.texto = filtro.area = filtro.local = filtro.ano = "";
     aplicaFiltro();
   }
-  $("limpar").onclick = () => { limpaFiltros(); encaixa(true); };
+  $("limpar").onclick = () => {
+    limpaFiltros();
+    if (selecionado) fechaPerfil();
+    encaixa(true);
+    busca.focus();
+  };
 
   $("alternar-filtros").onclick = (ev) => {
     const aberto = $("lateral").classList.toggle("mostrar-filtros");
